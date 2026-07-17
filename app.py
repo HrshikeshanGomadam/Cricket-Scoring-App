@@ -1,10 +1,3 @@
-The issue happens because the is_bowler_consecutive check evaluates your over change immediately on the 6th ball before the state completely registers that the old over is finalized and a new over has officially begun. Because Streamlit reruns the script from top to bottom on every click, it gets stuck in a validation loop where it thinks you are trying to make the same bowler bowl ball 1 of the new over.
-
-To fix this cleanly, we need to enforce that the "consecutive over" check only locks the screen when an over has just ended (exactly at 0 balls bowled in the current over), and we need to make sure that changing the bowler dropdown immediately clears the warning.
-
-Here is the corrected code. Replace your current file with this version:
-
-Python
 import streamlit as st
 import pandas as pd
 import math
