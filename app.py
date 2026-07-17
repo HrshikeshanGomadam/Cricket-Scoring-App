@@ -4,70 +4,48 @@ import math
 
 st.set_page_config(page_title="CricScore", layout="centered")
 
-# --- Optimized Square Single-Row Button Grid CSS ---
+# --- Mobile Viewport and Compact View CSS Injector ---
 st.markdown("""
     <style>
-        /* Compact app boundaries */
+        /* Force compact styling and hide default Streamlit block spaces */
         .block-container {
-            padding-top: 0.5rem !important;
-            padding-bottom: 0.5rem !important;
-            padding-left: 0.25rem !important;
-            padding-right: 0.25rem !important;
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
             max-width: 100% !important;
         }
-        /* Tighten typographic text */
-        h1 { font-size: 1.4rem !important; margin-bottom: 0.25rem !important; text-align: center; }
-        h3 { font-size: 1.2rem !important; margin: 0px !important; text-align: center; }
-        .stMarkdown div p { font-size: 0.9rem !important; margin-bottom: 1px !important; }
-        .stCaption { font-size: 0.8rem !important; margin-bottom: 1px !important; line-height: 1.1 !important; }
+        /* Tighten headers and paragraphs */
+        h1 { font-size: 1.6rem !important; margin-bottom: 0.5rem !important; text-align: center; }
+        h3 { font-size: 1.3rem !important; margin: 0px !important; text-align: center; }
+        .stMarkdown div p { font-size: 0.95rem !important; margin-bottom: 2px !important; }
+        .stCaption { font-size: 0.82rem !important; margin-bottom: 2px !important; line-height: 1.2 !important; }
         
-        /* Force the column layout container to act as a strict flex row without wrapping */
+        /* Reduce spacing between widgets/columns */
+        [data-testid="column"] {
+            padding: 2px !important;
+        }
         [data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            justify-content: space-between !important;
             gap: 4px !important;
         }
-        [data-testid="column"] {
-            flex: 1 1 0% !important;
-            min-width: 0 !important;
-            padding: 0px !important;
-        }
-        
-        /* Turn the buttons into comfortable uniform squares */
         div.stButton > button {
-            width: 44px !important;
-            height: 44px !important;
-            min-width: 44px !important;
-            min-height: 44px !important;
-            padding: 0px !important;
-            font-size: 1.05rem !important;
+            padding: 8px 4px !important;
+            font-size: 1rem !important;
             font-weight: bold !important;
             margin: 0px !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            border-radius: 6px !important;
         }
-        
-        /* Style the input text box to neatly match the square heights */
-        div[data-testid="stNumberInput"] {
-            width: 44px !important;
-            margin: 0px !important;
+        /* Slim down the expanders to save real estate */
+        .streamlit-expanderHeader {
+            padding: 4px 8px !important;
+            font-size: 0.85rem !important;
         }
-        div[data-testid="stNumberInput"] input {
-            padding: 2px !important;
-            text-align: center !important;
-            font-size: 0.95rem !important;
-            height: 44px !important;
-            border-radius: 6px !important;
+        .streamlit-expanderContent {
+            padding: 8px !important;
         }
-        
-        /* Clean dropdown adjustments */
-        .streamlit-expanderHeader { padding: 4px 6px !important; font-size: 0.8rem !important; }
-        .streamlit-expanderContent { padding: 6px !important; }
-        div[data-testid="stDataFrame"] { font-size: 0.75rem !important; }
+        /* Force dataframes to be compact */
+        div[data-testid="stDataFrame"] {
+            font-size: 0.8rem !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -276,29 +254,32 @@ elif st.session_state.step == 'live_match':
                 st.rerun()
                 
     else:
-        # --- Strict Single Row Scoreboard Entry ---
-        c0, c1, c2, c3, c4, c6, codd, cbtn = st.columns(8)
+        # Matrix Scoring Box (CricClubs Style Grid Layout)
+        r1_c1, r1_c2, r1_c3 = st.columns(3)
+        r2_c1, r2_c2, r2_c3 = st.columns(3)
+        r3_c1, r3_c2, r3_c3 = st.columns(3)
         
-        with c0: 
-            if st.button("0", disabled=disable_scoring): score_normal_delivery(0)
-        with c1: 
-            if st.button("1", disabled=disable_scoring): score_normal_delivery(1)
-        with c2: 
-            if st.button("2", disabled=disable_scoring): score_normal_delivery(2)
-        with c3: 
-            if st.button("3", disabled=disable_scoring): score_normal_delivery(3)
-        with c4: 
-            if st.button("4", disabled=disable_scoring): score_normal_delivery(4)
-        with c6: 
-            if st.button("6", disabled=disable_scoring): score_normal_delivery(6)
-        with codd:
-            uncommon_val = st.number_input("Odd", min_value=0, max_value=10, value=5, step=1, label_visibility="collapsed")
-        with cbtn:
-            if st.button("+", disabled=disable_scoring): score_normal_delivery(uncommon_val)
+        with r1_c1: 
+            if st.button("0", disabled=disable_scoring, use_container_width=True): score_normal_delivery(0)
+        with r1_c2: 
+            if st.button("1", disabled=disable_scoring, use_container_width=True): score_normal_delivery(1)
+        with r1_c3: 
+            if st.button("2", disabled=disable_scoring, use_container_width=True): score_normal_delivery(2)
+            
+        with r2_c1: 
+            if st.button("3", disabled=disable_scoring, use_container_width=True): score_normal_delivery(3)
+        with r2_c2: 
+            if st.button("4", disabled=disable_scoring, use_container_width=True): score_normal_delivery(4)
+        with r2_c3: 
+            if st.button("6", disabled=disable_scoring, use_container_width=True): score_normal_delivery(6)
 
-        # Batter Configuration Management Row
-        all_active = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
-        st.session_state.striker = st.selectbox("Active Striker:", all_active, index=all_active.index(st.session_state.striker))
+        with r3_c1:
+            uncommon_val = st.number_input("Odd", min_value=0, max_value=10, value=5, step=1, label_visibility="collapsed")
+        with r3_c2:
+            if st.button(f"+{uncommon_val}", disabled=disable_scoring, use_container_width=True): score_normal_delivery(uncommon_val)
+        with r3_c3:
+            all_active = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
+            st.session_state.striker = st.selectbox("Striker", all_active, index=all_active.index(st.session_state.striker), label_visibility="collapsed")
 
         # --- Collapsible Advanced Expanders ---
         with st.expander("➕ Extras (Wd / Nb / Byes)"):
