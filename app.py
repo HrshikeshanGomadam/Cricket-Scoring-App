@@ -13,6 +13,10 @@ if 't2_squad' not in st.session_state:
     st.session_state.t2_squad = {}
 if 'match_log' not in st.session_state:
     st.session_state.match_log = []
+if 'wicket_trigger' not in st.session_state:
+    st.session_state.wicket_trigger = False
+if 'last_out_position' not in st.session_state:
+    st.session_state.last_out_position = None # Tracks whether 'striker' or 'non_striker' needs replacing
 
 def init_player():
     return {
@@ -68,7 +72,7 @@ elif st.session_state.step == 'toss':
         toss_victor = st.radio("Who won the toss?", [st.session_state.team_1, st.session_state.team_2])
         toss_result = st.radio("Opted to:", ["Bat", "Bowl"])
         
-        if st.form_submit_button("Start Match"):
+        if st.form_submit_button("Select Openers"):
             if (toss_victor == st.session_state.team_1 and toss_result == "Bat") or (toss_victor == st.session_state.team_2 and toss_result == "Bowl"):
                 st.session_state.batting_team = st.session_state.team_1
                 st.session_state.bowling_team = st.session_state.team_2
@@ -90,21 +94,38 @@ elif st.session_state.step == 'toss':
             st.session_state.byes_count = 0
             st.session_state.leg_byes_count = 0
             st.session_state.innings = 1
-            
-            player_keys = list(st.session_state.bat_squad.keys())
-            st.session_state.striker = player_keys[0]
-            st.session_state.non_striker = player_keys[1] if len(player_keys) > 1 else player_keys[0]
-            st.session_state.current_bowler = list(st.session_state.bowl_squad.keys())[0]
-            st.session_state.step = 'live_match'
+            st.session_state.step = 'openers'
             st.rerun()
+
+# --- 3.5 Opening Batter Selection Flow ---
+elif st.session_state.step == 'openers':
+    st.header("Select Opening Batters")
+    batters_list = list(st.session_state.bat_squad.keys())
+    bowlers_list = list(st.session_state.bowl_squad.keys())
+    
+    with st.form("openers_form"):
+        str_choice = st.selectbox("Select Opening Striker (*):", batters_list, index=0)
+        nstr_choice = st.selectbox("Select Opening Non-Striker:", batters_list, index=1 if len(batters_list) > 1 else 0)
+        bowl_choice = st.selectbox("Select First Over Bowler:", bowlers_list, index=0)
+        
+        if st.form_submit_button("Start Live Scoring"):
+            if str_choice == nstr_choice:
+                st.error("Striker and Non-Striker cannot be the same player!")
+            else:
+                st.session_state.striker = str_choice
+                st.session_state.non_striker = nstr_choice
+                st.session_state.current_bowler = bowl_choice
+                st.session_state.step = 'live_match'
+                st.rerun()
 
 # --- 4. COMPACT Live Match Interface ---
 elif st.session_state.step == 'live_match':
     overs = st.session_state.balls_bowled // 6
     rem_balls = st.session_state.balls_bowled % 6
     is_all_out = st.session_state.wickets >= st.session_state.max_wickets
+    available_batters = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out" and k != st.session_state.striker and k != st.session_state.non_striker]
     
-    # Header Broadcast Strip (Takes up minimal space)
+    # Header Broadcast Strip
     ov_str = f"{overs}.{rem_balls}"
     st.markdown(f"### **{st.session_state.batting_team}**: `{st.session_state.score}/{st.session_state.wickets}` ({ov_str} Ov)")
     
@@ -154,146 +175,173 @@ elif st.session_state.step == 'live_match':
         recalculate_metrics()
         st.rerun()
 
-    # Matrix Scoring Box (CricClubs Style Grid Layout)
-    st.write("---")
-    r1_c1, r1_c2, r1_c3 = st.columns(3)
-    r2_c1, r2_c2, r2_c3 = st.columns(3)
-    r3_c1, r3_c2, r3_c3 = st.columns(3)
-    
-    with r1_c1: 
-        if st.button("0", disabled=is_all_out, use_container_width=True): score_normal_delivery(0)
-    with r1_c2: 
-        if st.button("1", disabled=is_all_out, use_container_width=True): score_normal_delivery(1)
-    with r1_c3: 
-        if st.button("2", disabled=is_all_out, use_container_width=True): score_normal_delivery(2)
-        
-    with r2_c1: 
-        if st.button("3", disabled=is_all_out, use_container_width=True): score_normal_delivery(3)
-    with r2_c2: 
-        if st.button("4", disabled=is_all_out, use_container_width=True): score_normal_delivery(4)
-    with r2_c3: 
-        if st.button("6", disabled=is_all_out, use_container_width=True): score_normal_delivery(6)
-
-    # Uncommon runs selection & immediate line-up override dropdowns inside row 3
-    with r3_c1:
-        uncommon_val = st.number_input("Odd", min_value=0, max_value=10, value=5, step=1, label_visibility="collapsed")
-    with r3_c2:
-        if st.button(f"+{uncommon_val}", disabled=is_all_out, use_container_width=True): score_normal_delivery(uncommon_val)
-    with r3_c3:
-        available_batters = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
-        st.session_state.striker = st.selectbox("Striker", available_batters, index=available_batters.index(st.session_state.striker), label_visibility="collapsed")
-
-    # --- Collapsible Advanced Expanders (Keeps screen perfectly clean) ---
-    st.write(" ")
-    with st.expander("➕ Extras (Wd / Nb / Byes)"):
-        ex_type = st.selectbox("Select Extra Type", ["Wide", "No Ball", "Leg Byes", "Byes"])
-        ex_runs = st.number_input("Additional Runs off Delivery:", min_value=0, max_value=10, value=0, step=1)
-        nb_scoring_mode = st.radio("Scoring Method (No Balls Only):", ["Bat", "Byes/None"], horizontal=True)
-        
-        if st.button("Submit Extra Delivery", disabled=is_all_out, use_container_width=True, type="primary"):
-            if ex_type == "Wide":
-                st.session_state.bowl_squad[st.session_state.current_bowler]["wides"] += (ex_runs + 1)
-                st.session_state.wide_count += (ex_runs + 1)
-                st.session_state.score += (ex_runs + 1)
-                st.session_state.match_log.append("Wd")
-                handle_strike_rotation(ex_runs)
-            elif ex_type == "No Ball":
-                st.session_state.no_ball_count += 1
-                if nb_scoring_mode == "Bat":
-                    st.session_state.bat_squad[st.session_state.striker]["runs"] += ex_runs
-                    st.session_state.bowl_squad[st.session_state.current_bowler]["no_balls"] += (ex_runs + 1)
-                    st.session_state.score += (ex_runs + 1)
+    # --- BLOCKING WICKET PROMPT GATING ---
+    if st.session_state.wicket_trigger and not is_all_out:
+        st.write("---")
+        st.error("💥 Wicket Down! Choose Incoming Batter")
+        with st.form("new_batter_form"):
+            incoming_choice = st.selectbox("New Batter:", available_batters)
+            if st.form_submit_button("Bring Batter onto Field"):
+                if st.session_state.last_out_position == 'striker':
+                    st.session_state.striker = incoming_choice
                 else:
-                    st.session_state.bowl_squad[st.session_state.current_bowler]["no_balls"] += 1
-                    st.session_state.score += (ex_runs + 1)
-                st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
-                st.session_state.match_log.append("Nb")
-                handle_strike_rotation(ex_runs)
-            elif ex_type == "Leg Byes":
-                st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
-                st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
-                st.session_state.leg_byes_count += ex_runs
-                st.session_state.score += ex_runs
-                st.session_state.balls_bowled += 1
-                st.session_state.match_log.append("Lb")
-                handle_strike_rotation(ex_runs)
-                check_over_completion()
-            elif ex_type == "Byes":
-                st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
-                st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
-                st.session_state.byes_count += ex_runs
-                st.session_state.score += ex_runs
-                st.session_state.balls_bowled += 1
-                st.session_state.match_log.append("B")
-                handle_strike_rotation(ex_runs)
-                check_over_completion()
-            recalculate_metrics()
-            st.rerun()
-
-    with st.expander("💥 Dismissals / Wickets"):
-        w_mode = st.selectbox("Method of Dismissal", ["Bowled", "Caught", "LBW", "Stumped", "Run Out", "Hit Wicket", "Mankad"])
-        delivery_context = st.radio("Delivery Context", ["Normal", "Wide", "No Ball"], horizontal=True)
-        
-        if delivery_context in ["Wide", "No Ball"] and w_mode not in ["Run Out", "Mankad", "Stumped"]:
-            st.warning(f"⚠️ A batter cannot be dismissed via '{w_mode}' on a {delivery_context}.")
-        else:
-            if w_mode == "Run Out":
-                target_batter = st.selectbox("Batter Run Out", [st.session_state.striker, st.session_state.non_striker])
-                target_end = st.selectbox("Run Out End", ["Keeper", "Bowler"])
-                ro_runs = st.number_input("Runs Completed Prior to Out:", min_value=0, max_value=6, value=0)
+                    st.session_state.non_striker = incoming_choice
+                st.session_state.wicket_trigger = False
+                st.session_state.last_out_position = None
+                st.rerun()
                 
-                if st.button("Confirm Run Out Wicket", type="primary", use_container_width=True):
-                    st.session_state.bat_squad[target_batter]["mode_of_dismissal"] = "run out"
-                    if delivery_context == "Wide":
-                        st.session_state.bowl_squad[st.session_state.current_bowler]["wides"] += (ro_runs + 1)
-                        st.session_state.score += (ro_runs + 1)
-                    elif delivery_context == "No Ball":
-                        st.session_state.bowl_squad[st.session_state.current_bowler]["no_balls"] += (ro_runs + 1)
-                        st.session_state.score += (ro_runs + 1)
+    else:
+        # Matrix Scoring Box (CricClubs Style Grid Layout)
+        st.write("---")
+        r1_c1, r1_c2, r1_c3 = st.columns(3)
+        r2_c1, r2_c2, r2_c3 = st.columns(3)
+        r3_c1, r3_c2, r3_c3 = st.columns(3)
+        
+        with r1_c1: 
+            if st.button("0", disabled=is_all_out, use_container_width=True): score_normal_delivery(0)
+        with r1_c2: 
+            if st.button("1", disabled=is_all_out, use_container_width=True): score_normal_delivery(1)
+        with r1_c3: 
+            if st.button("2", disabled=is_all_out, use_container_width=True): score_normal_delivery(2)
+            
+        with r2_c1: 
+            if st.button("3", disabled=is_all_out, use_container_width=True): score_normal_delivery(3)
+        with r2_c2: 
+            if st.button("4", disabled=is_all_out, use_container_width=True): score_normal_delivery(4)
+        with r2_c3: 
+            if st.button("6", disabled=is_all_out, use_container_width=True): score_normal_delivery(6)
+
+        # Uncommon runs selection & immediate line-up override dropdowns inside row 3
+        with r3_c1:
+            uncommon_val = st.number_input("Odd", min_value=0, max_value=10, value=5, step=1, label_visibility="collapsed")
+        with r3_c2:
+            if st.button(f"+{uncommon_val}", disabled=is_all_out, use_container_width=True): score_normal_delivery(uncommon_val)
+        with r3_c3:
+            all_active = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
+            st.session_state.striker = st.selectbox("Striker", all_active, index=all_active.index(st.session_state.striker), label_visibility="collapsed")
+
+        # --- Collapsible Advanced Expanders ---
+        st.write(" ")
+        with st.expander("➕ Extras (Wd / Nb / Byes)"):
+            ex_type = st.selectbox("Select Extra Type", ["Wide", "No Ball", "Leg Byes", "Byes"])
+            ex_runs = st.number_input("Additional Runs off Delivery:", min_value=0, max_value=10, value=0, step=1)
+            nb_scoring_mode = st.radio("Scoring Method (No Balls Only):", ["Bat", "Byes/None"], horizontal=True)
+            
+            if st.button("Submit Extra Delivery", disabled=is_all_out, use_container_width=True, type="primary"):
+                if ex_type == "Wide":
+                    st.session_state.bowl_squad[st.session_state.current_bowler]["wides"] += (ex_runs + 1)
+                    st.session_state.wide_count += (ex_runs + 1)
+                    st.session_state.score += (ex_runs + 1)
+                    st.session_state.match_log.append("Wd")
+                    handle_strike_rotation(ex_runs)
+                elif ex_type == "No Ball":
+                    st.session_state.no_ball_count += 1
+                    if nb_scoring_mode == "Bat":
+                        st.session_state.bat_squad[st.session_state.striker]["runs"] += ex_runs
+                        st.session_state.bowl_squad[st.session_state.current_bowler]["no_balls"] += (ex_runs + 1)
+                        st.session_state.score += (ex_runs + 1)
                     else:
-                        st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
-                        st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
-                        st.session_state.bowl_squad[st.session_state.current_bowler]["runs_given"] += ro_runs
-                        st.session_state.score += ro_runs
-                        st.session_state.balls_bowled += 1
-                    
-                    if target_batter == st.session_state.striker and target_end != "Keeper":
-                        st.session_state.striker = st.session_state.non_striker
-                    elif target_batter != st.session_state.striker and target_end == "Keeper":
-                        st.session_state.non_striker = st.session_state.striker
+                        st.session_state.bowl_squad[st.session_state.current_bowler]["no_balls"] += 1
+                        st.session_state.score += (ex_runs + 1)
+                    st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
+                    st.session_state.match_log.append("Nb")
+                    handle_strike_rotation(ex_runs)
+                elif ex_type == "Leg Byes":
+                    st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
+                    st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
+                    st.session_state.leg_byes_count += ex_runs
+                    st.session_state.score += ex_runs
+                    st.session_state.balls_bowled += 1
+                    st.session_state.match_log.append("Lb")
+                    handle_strike_rotation(ex_runs)
+                    check_over_completion()
+                elif ex_type == "Byes":
+                    st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
+                    st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
+                    st.session_state.byes_count += ex_runs
+                    st.session_state.score += ex_runs
+                    st.session_state.balls_bowled += 1
+                    st.session_state.match_log.append("B")
+                    handle_strike_rotation(ex_runs)
+                    check_over_completion()
+                recalculate_metrics()
+                st.rerun()
 
-                    st.session_state.wickets += 1
-                    st.session_state.match_log.append("W")
-                    if delivery_context not in ["Wide", "No Ball"]:
-                        check_over_completion()
-                    recalculate_metrics()
-                    st.rerun()
+        with st.expander("💥 Dismissals / Wickets"):
+            w_mode = st.selectbox("Method of Dismissal", ["Bowled", "Caught", "LBW", "Stumped", "Run Out", "Hit Wicket", "Mankad"])
+            delivery_context = st.radio("Delivery Context", ["Normal", "Wide", "No Ball"], horizontal=True)
+            
+            if delivery_context in ["Wide", "No Ball"] and w_mode not in ["Run Out", "Mankad", "Stumped"]:
+                st.warning(f"⚠️ A batter cannot be dismissed via '{w_mode}' on a {delivery_context}.")
             else:
-                if st.button("Confirm Wicket", type="primary", use_container_width=True):
-                    out_p = st.session_state.non_striker if w_mode == "Mankad" else st.session_state.striker
-                    st.session_state.bat_squad[out_p]["mode_of_dismissal"] = w_mode
-                    if w_mode != "Mankad":
-                        st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
-                        st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
-                        st.session_state.bowl_squad[st.session_state.current_bowler]["wickets"] += 1
-                        st.session_state.balls_bowled += 1
-                    st.session_state.wickets += 1
-                    st.session_state.match_log.append("W")
-                    if w_mode != "Mankad":
-                        check_over_completion()
-                    recalculate_metrics()
-                    st.rerun()
+                if w_mode == "Run Out":
+                    target_batter = st.selectbox("Batter Run Out", [st.session_state.striker, st.session_state.non_striker])
+                    target_end = st.selectbox("Run Out End", ["Keeper", "Bowler"])
+                    ro_runs = st.number_input("Runs Completed Prior to Out:", min_value=0, max_value=6, value=0)
+                    
+                    if st.button("Confirm Run Out Wicket", type="primary", use_container_width=True):
+                        st.session_state.bat_squad[target_batter]["mode_of_dismissal"] = "run out"
+                        if delivery_context == "Wide":
+                            st.session_state.bowl_squad[st.session_state.current_bowler]["wides"] += (ro_runs + 1)
+                            st.session_state.score += (ro_runs + 1)
+                        elif delivery_context == "No Ball":
+                            st.session_state.bowl_squad[st.session_state.current_bowler]["no_balls"] += (ro_runs + 1)
+                            st.session_state.score += (ro_runs + 1)
+                        else:
+                            st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
+                            st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
+                            st.session_state.bowl_squad[st.session_state.current_bowler]["runs_given"] += ro_runs
+                            st.session_state.score += ro_runs
+                            st.session_state.balls_bowled += 1
+                        
+                        # Store structural layout data for replacement logic prompt
+                        st.session_state.last_out_position = 'striker' if target_batter == st.session_state.striker else 'non_striker'
+                        
+                        if target_batter == st.session_state.striker and target_end != "Keeper":
+                            st.session_state.striker = st.session_state.non_striker
+                            st.session_state.last_out_position = 'non_striker'
+                        elif target_batter != st.session_state.striker and target_end == "Keeper":
+                            st.session_state.non_striker = st.session_state.striker
+                            st.session_state.last_out_position = 'striker'
 
-    with st.expander("🔄 Setup Lineup Overrides"):
-        bowlers = list(st.session_state.bowl_squad.keys())
-        st.session_state.non_striker = st.selectbox("Non-Striker Override", available_batters, index=available_batters.index(st.session_state.non_striker))
-        st.session_state.current_bowler = st.selectbox("Bowler Override", bowlers, index=bowlers.index(st.session_state.current_bowler))
+                        st.session_state.wickets += 1
+                        st.session_state.match_log.append("W")
+                        if delivery_context not in ["Wide", "No Ball"]:
+                            check_over_completion()
+                        
+                        st.session_state.wicket_trigger = True
+                        recalculate_metrics()
+                        st.rerun()
+                else:
+                    if st.button("Confirm Wicket", type="primary", use_container_width=True):
+                        out_p = st.session_state.non_striker if w_mode == "Mankad" else st.session_state.striker
+                        st.session_state.bat_squad[out_p]["mode_of_dismissal"] = w_mode
+                        if w_mode != "Mankad":
+                            st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
+                            st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
+                            st.session_state.bowl_squad[st.session_state.current_bowler]["wickets"] += 1
+                            st.session_state.balls_bowled += 1
+                        
+                        st.session_state.last_out_position = 'non_striker' if w_mode == "Mankad" else 'striker'
+                        st.session_state.wickets += 1
+                        st.session_state.match_log.append("W")
+                        if w_mode != "Mankad":
+                            check_over_completion()
+                        
+                        st.session_state.wicket_trigger = True
+                        recalculate_metrics()
+                        st.rerun()
+
+        with st.expander("🔄 Setup Lineup Overrides"):
+            bowlers = list(st.session_state.bowl_squad.keys())
+            st.session_state.non_striker = st.selectbox("Non-Striker Override", all_active, index=all_active.index(st.session_state.non_striker))
+            st.session_state.current_bowler = st.selectbox("Bowler Override", bowlers, index=bowlers.index(st.session_state.current_bowler))
 
     # Real-time Match Stream Log
     if st.session_state.match_log:
         st.caption(f"**Recent:** {' | '.join(st.session_state.match_log[-8:])}")
 
-    # --- Full Cards Display Tables (Tucked out of primary mobile view) ---
+    # --- Full Scorecards Display Tables ---
     st.write("---")
     df_bat = pd.DataFrame.from_dict(st.session_state.bat_squad, orient='index')[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]]
     df_bowl = pd.DataFrame.from_dict(st.session_state.bowl_squad, orient='index')[["balls_bowled", "wides", "no_balls", "runs_given", "wickets", "economy"]]
@@ -325,11 +373,9 @@ elif st.session_state.step == 'live_match':
                 st.session_state.byes_count = 0
                 st.session_state.leg_byes_count = 0
                 st.session_state.match_log = []
+                st.session_state.wicket_trigger = False
                 
-                player_keys = list(st.session_state.bat_squad.keys())
-                st.session_state.striker = player_keys[0]
-                st.session_state.non_striker = player_keys[1] if len(player_keys) > 1 else player_keys[0]
-                st.session_state.current_bowler = list(st.session_state.bowl_squad.keys())[0]
+                st.session_state.step = 'openers'
                 st.rerun()
         else:
             st.success("🎉 Match Finished!")
