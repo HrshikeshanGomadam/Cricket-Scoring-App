@@ -4,47 +4,58 @@ import math
 
 st.set_page_config(page_title="CricScore", layout="centered")
 
-# --- Mobile Viewport and Compact View CSS Injector ---
+# --- Ultra-Compact View CSS Injector ---
 st.markdown("""
     <style>
         /* Force compact styling and hide default Streamlit block spaces */
         .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
-            padding-left: 0.5rem !important;
-            padding-right: 0.5rem !important;
+            padding-top: 0.5rem !important;
+            padding-bottom: 0.5rem !important;
+            padding-left: 0.25rem !important;
+            padding-right: 0.25rem !important;
             max-width: 100% !important;
         }
         /* Tighten headers and paragraphs */
-        h1 { font-size: 1.6rem !important; margin-bottom: 0.5rem !important; text-align: center; }
-        h3 { font-size: 1.3rem !important; margin: 0px !important; text-align: center; }
-        .stMarkdown div p { font-size: 0.95rem !important; margin-bottom: 2px !important; }
-        .stCaption { font-size: 0.82rem !important; margin-bottom: 2px !important; line-height: 1.2 !important; }
+        h1 { font-size: 1.4rem !important; margin-bottom: 0.25rem !important; text-align: center; }
+        h3 { font-size: 1.2rem !important; margin: 0px !important; text-align: center; }
+        .stMarkdown div p { font-size: 0.9rem !important; margin-bottom: 1px !important; }
+        .stCaption { font-size: 0.8rem !important; margin-bottom: 1px !important; line-height: 1.1 !important; }
         
-        /* Reduce spacing between widgets/columns */
+        /* Drastically minimize spacing between widgets/columns */
         [data-testid="column"] {
-            padding: 2px !important;
+            padding: 1px !important;
         }
         [data-testid="stHorizontalBlock"] {
-            gap: 4px !important;
+            gap: 2px !important;
         }
         div.stButton > button {
-            padding: 8px 4px !important;
-            font-size: 1rem !important;
+            padding: 6px 2px !important;
+            font-size: 0.95rem !important;
             font-weight: bold !important;
             margin: 0px !important;
+            width: 100% !important;
+        }
+        /* Make the number input container narrow */
+        div[data-testid="stNumberInput"] {
+            width: 100% !important;
+            margin: 0px !important;
+        }
+        div[data-testid="stNumberInput"] input {
+            padding: 4px !important;
+            font-size: 0.9rem !important;
+            height: 32px !important;
         }
         /* Slim down the expanders to save real estate */
         .streamlit-expanderHeader {
-            padding: 4px 8px !important;
-            font-size: 0.85rem !important;
+            padding: 2px 6px !important;
+            font-size: 0.8rem !important;
         }
         .streamlit-expanderContent {
-            padding: 8px !important;
+            padding: 6px !important;
         }
         /* Force dataframes to be compact */
         div[data-testid="stDataFrame"] {
-            font-size: 0.8rem !important;
+            font-size: 0.75rem !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -254,32 +265,30 @@ elif st.session_state.step == 'live_match':
                 st.rerun()
                 
     else:
-        # Matrix Scoring Box (CricClubs Style Grid Layout)
-        r1_c1, r1_c2, r1_c3 = st.columns(3)
-        r2_c1, r2_c2, r2_c3 = st.columns(3)
-        r3_c1, r3_c2, r3_c3 = st.columns(3)
+        # --- Multi-box Single Row Scoring Grid ---
+        # Splitting columns using custom small proportional fractions to fit 7 items elegantly across 1 row
+        c0, c1, c2, c3, c4, c6, codd, cbtn = st.columns([1, 1, 1, 1, 1, 1, 1.2, 1.5])
         
-        with r1_c1: 
-            if st.button("0", disabled=disable_scoring, use_container_width=True): score_normal_delivery(0)
-        with r1_c2: 
-            if st.button("1", disabled=disable_scoring, use_container_width=True): score_normal_delivery(1)
-        with r1_c3: 
-            if st.button("2", disabled=disable_scoring, use_container_width=True): score_normal_delivery(2)
-            
-        with r2_c1: 
-            if st.button("3", disabled=disable_scoring, use_container_width=True): score_normal_delivery(3)
-        with r2_c2: 
-            if st.button("4", disabled=disable_scoring, use_container_width=True): score_normal_delivery(4)
-        with r2_c3: 
-            if st.button("6", disabled=disable_scoring, use_container_width=True): score_normal_delivery(6)
-
-        with r3_c1:
+        with c0: 
+            if st.button("0", disabled=disable_scoring): score_normal_delivery(0)
+        with c1: 
+            if st.button("1", disabled=disable_scoring): score_normal_delivery(1)
+        with c2: 
+            if st.button("2", disabled=disable_scoring): score_normal_delivery(2)
+        with c3: 
+            if st.button("3", disabled=disable_scoring): score_normal_delivery(3)
+        with c4: 
+            if st.button("4", disabled=disable_scoring): score_normal_delivery(4)
+        with c6: 
+            if st.button("6", disabled=disable_scoring): score_normal_delivery(6)
+        with codd:
             uncommon_val = st.number_input("Odd", min_value=0, max_value=10, value=5, step=1, label_visibility="collapsed")
-        with r3_c2:
-            if st.button(f"+{uncommon_val}", disabled=disable_scoring, use_container_width=True): score_normal_delivery(uncommon_val)
-        with r3_c3:
-            all_active = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
-            st.session_state.striker = st.selectbox("Striker", all_active, index=all_active.index(st.session_state.striker), label_visibility="collapsed")
+        with cbtn:
+            if st.button(f"+{uncommon_val}", disabled=disable_scoring): score_normal_delivery(uncommon_val)
+
+        # Dropdown line-up tracking placement
+        all_active = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
+        st.session_state.striker = st.selectbox("Active Striker:", all_active, index=all_active.index(st.session_state.striker))
 
         # --- Collapsible Advanced Expanders ---
         with st.expander("➕ Extras (Wd / Nb / Byes)"):
