@@ -4,10 +4,10 @@ import math
 
 st.set_page_config(page_title="CricScore", layout="centered")
 
-# --- Mobile Viewport and Compact View CSS Injector ---
+# --- Custom Styling for 3x3 Grid and Fully Expanded Scorecard Tables ---
 st.markdown("""
     <style>
-        /* Force compact styling and hide default Streamlit block spaces */
+        /* Force compact styling and maximize container space */
         .block-container {
             padding-top: 1rem !important;
             padding-bottom: 1rem !important;
@@ -15,34 +15,48 @@ st.markdown("""
             padding-right: 0.5rem !important;
             max-width: 100% !important;
         }
-        /* Tighten headers and paragraphs */
+        /* Typography adjustments */
         h1 { font-size: 1.6rem !important; margin-bottom: 0.5rem !important; text-align: center; }
         h3 { font-size: 1.3rem !important; margin: 0px !important; text-align: center; }
         .stMarkdown div p { font-size: 0.95rem !important; margin-bottom: 2px !important; }
-        .stCaption { font-size: 0.82rem !important; margin-bottom: 2px !important; line-height: 1.2 !important; }
+        .stCaption { font-size: 0.85rem !important; margin-bottom: 4px !important; line-height: 1.2 !important; }
         
-        /* Reduce spacing between widgets/columns */
+        /* Spacing layout optimizations for grid columns */
         [data-testid="column"] {
-            padding: 2px !important;
+            padding: 3px !important;
         }
         [data-testid="stHorizontalBlock"] {
-            gap: 4px !important;
+            gap: 6px !important;
         }
+        
+        /* Make buttons prominent, comfortably square-ish, and highly touchable on mobile */
         div.stButton > button {
-            padding: 8px 4px !important;
-            font-size: 1rem !important;
+            padding: 10px 4px !important;
+            font-size: 1.1rem !important;
             font-weight: bold !important;
             margin: 0px !important;
+            height: 50px !important;
+            width: 100% !important;
+            border-radius: 8px !important;
         }
+        
+        /* Match Odd input box height with buttons */
+        div[data-testid="stNumberInput"] input {
+            height: 50px !important;
+            font-size: 1.05rem !important;
+            text-align: center !important;
+        }
+
         /* Slim down the expanders to save real estate */
         .streamlit-expanderHeader {
-            padding: 4px 8px !important;
-            font-size: 0.85rem !important;
+            padding: 6px 10px !important;
+            font-size: 0.9rem !important;
         }
         .streamlit-expanderContent {
             padding: 8px !important;
         }
-        /* Force dataframes to be compact */
+        
+        /* Force dataframes to render beautifully crisp on small screens */
         div[data-testid="stDataFrame"] {
             font-size: 0.8rem !important;
         }
@@ -168,7 +182,7 @@ elif st.session_state.step == 'openers':
                 st.session_state.step = 'live_match'
                 st.rerun()
 
-# --- 4. COMPACT Live Match Interface ---
+# --- 4. Live Match Interface ---
 elif st.session_state.step == 'live_match':
     overs = st.session_state.balls_bowled // 6
     rem_balls = st.session_state.balls_bowled % 6
@@ -254,7 +268,7 @@ elif st.session_state.step == 'live_match':
                 st.rerun()
                 
     else:
-        # Matrix Scoring Box (CricClubs Style Grid Layout)
+        # Reverted Matrix Scoring Box (3 Columns Grid Layout)
         r1_c1, r1_c2, r1_c3 = st.columns(3)
         r2_c1, r2_c2, r2_c3 = st.columns(3)
         r3_c1, r3_c2, r3_c3 = st.columns(3)
@@ -400,13 +414,13 @@ elif st.session_state.step == 'live_match':
     if st.session_state.match_log:
         st.caption(f"**Recent:** {' | '.join(st.session_state.match_log[-8:])}")
 
-    # --- Full Scorecards Display Tables ---
+    # --- Full Scorecards Display Tables (Height bounds completely removed) ---
     df_bat = pd.DataFrame.from_dict(st.session_state.bat_squad, orient='index')[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]]
     df_bowl = pd.DataFrame.from_dict(st.session_state.bowl_squad, orient='index')[["balls_bowled", "wides", "no_balls", "runs_given", "wickets", "economy"]]
     
     t1, t2 = st.tabs(["Batting", "Bowling"])
-    with t1: st.dataframe(df_bat, use_container_width=True, height=180)
-    with t2: st.dataframe(df_bowl, use_container_width=True, height=180)
+    with t1: st.dataframe(df_bat, use_container_width=True)
+    with t2: st.dataframe(df_bowl, use_container_width=True)
 
     # Innings Transitions Boundary Handlers
     total_allowed_balls = st.session_state.over_limit * 6
