@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import math
 
 st.set_page_config(page_title="CricScore", layout="centered")
 st.title("🏏 Professional Live Cricket Scorecard")
@@ -16,7 +17,9 @@ if 'match_log' not in st.session_state:
 if 'wicket_trigger' not in st.session_state:
     st.session_state.wicket_trigger = False
 if 'last_out_position' not in st.session_state:
-    st.session_state.last_out_position = None # Tracks whether 'striker' or 'non_striker' needs replacing
+    st.session_state.last_out_position = None
+if 'last_over_bowler' not in st.session_state:
+    st.session_state.last_over_bowler = None
 
 def init_player():
     return {
@@ -94,6 +97,7 @@ elif st.session_state.step == 'toss':
             st.session_state.byes_count = 0
             st.session_state.leg_byes_count = 0
             st.session_state.innings = 1
+            st.session_state.last_over_bowler = None
             st.session_state.step = 'openers'
             st.rerun()
 
@@ -137,6 +141,18 @@ elif st.session_state.step == 'live_match':
     st.caption(f"🏏 **{st.session_state.striker}***: {s_p['runs']}({s_p['balls_faced']}) | {st.session_state.non_striker}: {ns_p['runs']}({ns_p['balls_faced']})")
     st.caption(f"🥎 **{st.session_state.current_bowler}**: {b_p['wickets']}-{b_p['runs_given'] + b_p['wides'] + b_p['no_balls']} ({b_p['balls_bowled']//6}.{b_p['balls_bowled']%6} Ov)")
 
+    # --- Bowler Rule Validations ---
+    max_bowler_overs = math.ceil(st.session_state.over_limit / 5)
+    is_bowler_exhausted = b_p["balls_bowled"] >= (max_bowler_overs * 6)
+    is_bowler_consecutive = (st.session_state.balls_bowled % 6 == 0 and st.session_state.balls_bowled > 0 and st.session_state.current_bowler == st.session_state.last_over_bowler)
+    
+    if is_bowler_consecutive:
+        st.error(f"⚠️ {st.session_state.current_bowler} cannot bowl consecutive overs! Change bowler in Lineup Overrides.")
+    elif is_bowler_exhausted:
+        st.error(f"⚠️ {st.session_state.current_bowler} reached the maximum allocation limit ({max_bowler_overs} overs)!")
+
+    disable_scoring = is_all_out or is_bowler_exhausted or is_bowler_consecutive
+
     # Callbacks & Mathematical Engines
     def recalculate_metrics():
         for b in st.session_state.bat_squad:
@@ -158,6 +174,7 @@ elif st.session_state.step == 'live_match':
     def check_over_completion():
         if st.session_state.balls_bowled % 6 == 0 and st.session_state.balls_bowled > 0:
             st.session_state.striker, st.session_state.non_striker = st.session_state.non_striker, st.session_state.striker
+            st.session_state.last_over_bowler = st.session_state.current_bowler
 
     def score_normal_delivery(runs):
         st.session_state.bat_squad[st.session_state.striker]["runs"] += runs
@@ -198,24 +215,24 @@ elif st.session_state.step == 'live_match':
         r3_c1, r3_c2, r3_c3 = st.columns(3)
         
         with r1_c1: 
-            if st.button("0", disabled=is_all_out, use_container_width=True): score_normal_delivery(0)
+            if st.button("0", disabled=disable_scoring, use_container_width=True): score_normal_delivery(0)
         with r1_c2: 
-            if st.button("1", disabled=is_all_out, use_container_width=True): score_normal_delivery(1)
+            if st.button("1", disabled=disable_scoring, use_container_width=True): score_normal_delivery(1)
         with r1_c3: 
-            if st.button("2", disabled=is_all_out, use_container_width=True): score_normal_delivery(2)
+            if st.button("2", disabled=disable_scoring, use_container_width=True): score_normal_delivery(2)
             
         with r2_c1: 
-            if st.button("3", disabled=is_all_out, use_container_width=True): score_normal_delivery(3)
+            if st.button("3", disabled=disable_scoring, use_container_width=True): score_normal_delivery(3)
         with r2_c2: 
-            if st.button("4", disabled=is_all_out, use_container_width=True): score_normal_delivery(4)
+            if st.button("4", disabled=disable_scoring, use_container_width=True): score_normal_delivery(4)
         with r2_c3: 
-            if st.button("6", disabled=is_all_out, use_container_width=True): score_normal_delivery(6)
+            if st.button("6", disabled=disable_scoring, use_container_width=True): score_normal_delivery(6)
 
         # Uncommon runs selection & immediate line-up override dropdowns inside row 3
         with r3_c1:
             uncommon_val = st.number_input("Odd", min_value=0, max_value=10, value=5, step=1, label_visibility="collapsed")
         with r3_c2:
-            if st.button(f"+{uncommon_val}", disabled=is_all_out, use_container_width=True): score_normal_delivery(uncommon_val)
+            if st.button(f"+{uncommon_val}", disabled=disable_scoring, use_container_width=True): score_normal_delivery(uncommon_val)
         with r3_c3:
             all_active = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
             st.session_state.striker = st.selectbox("Striker", all_active, index=all_active.index(st.session_state.striker), label_visibility="collapsed")
@@ -227,7 +244,7 @@ elif st.session_state.step == 'live_match':
             ex_runs = st.number_input("Additional Runs off Delivery:", min_value=0, max_value=10, value=0, step=1)
             nb_scoring_mode = st.radio("Scoring Method (No Balls Only):", ["Bat", "Byes/None"], horizontal=True)
             
-            if st.button("Submit Extra Delivery", disabled=is_all_out, use_container_width=True, type="primary"):
+            if st.button("Submit Extra Delivery", disabled=disable_scoring, use_container_width=True, type="primary"):
                 if ex_type == "Wide":
                     st.session_state.bowl_squad[st.session_state.current_bowler]["wides"] += (ex_runs + 1)
                     st.session_state.wide_count += (ex_runs + 1)
@@ -279,7 +296,7 @@ elif st.session_state.step == 'live_match':
                     target_end = st.selectbox("Run Out End", ["Keeper", "Bowler"])
                     ro_runs = st.number_input("Runs Completed Prior to Out:", min_value=0, max_value=6, value=0)
                     
-                    if st.button("Confirm Run Out Wicket", type="primary", use_container_width=True):
+                    if st.button("Confirm Run Out Wicket", type="primary", use_container_width=True, disabled=disable_scoring):
                         st.session_state.bat_squad[target_batter]["mode_of_dismissal"] = "run out"
                         if delivery_context == "Wide":
                             st.session_state.bowl_squad[st.session_state.current_bowler]["wides"] += (ro_runs + 1)
@@ -294,7 +311,6 @@ elif st.session_state.step == 'live_match':
                             st.session_state.score += ro_runs
                             st.session_state.balls_bowled += 1
                         
-                        # Store structural layout data for replacement logic prompt
                         st.session_state.last_out_position = 'striker' if target_batter == st.session_state.striker else 'non_striker'
                         
                         if target_batter == st.session_state.striker and target_end != "Keeper":
@@ -313,7 +329,7 @@ elif st.session_state.step == 'live_match':
                         recalculate_metrics()
                         st.rerun()
                 else:
-                    if st.button("Confirm Wicket", type="primary", use_container_width=True):
+                    if st.button("Confirm Wicket", type="primary", use_container_width=True, disabled=disable_scoring):
                         out_p = st.session_state.non_striker if w_mode == "Mankad" else st.session_state.striker
                         st.session_state.bat_squad[out_p]["mode_of_dismissal"] = w_mode
                         if w_mode != "Mankad":
@@ -374,6 +390,7 @@ elif st.session_state.step == 'live_match':
                 st.session_state.leg_byes_count = 0
                 st.session_state.match_log = []
                 st.session_state.wicket_trigger = False
+                st.session_state.last_over_bowler = None
                 
                 st.session_state.step = 'openers'
                 st.rerun()
