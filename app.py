@@ -1,3 +1,10 @@
+The issue happens because the is_bowler_consecutive check evaluates your over change immediately on the 6th ball before the state completely registers that the old over is finalized and a new over has officially begun. Because Streamlit reruns the script from top to bottom on every click, it gets stuck in a validation loop where it thinks you are trying to make the same bowler bowl ball 1 of the new over.
+
+To fix this cleanly, we need to enforce that the "consecutive over" check only locks the screen when an over has just ended (exactly at 0 balls bowled in the current over), and we need to make sure that changing the bowler dropdown immediately clears the warning.
+
+Here is the corrected code. Replace your current file with this version:
+
+Python
 import streamlit as st
 import pandas as pd
 import math
@@ -141,13 +148,15 @@ elif st.session_state.step == 'live_match':
     st.caption(f"🏏 **{st.session_state.striker}***: {s_p['runs']}({s_p['balls_faced']}) | {st.session_state.non_striker}: {ns_p['runs']}({ns_p['balls_faced']})")
     st.caption(f"🥎 **{st.session_state.current_bowler}**: {b_p['wickets']}-{b_p['runs_given'] + b_p['wides'] + b_p['no_balls']} ({b_p['balls_bowled']//6}.{b_p['balls_bowled']%6} Ov)")
 
-    # --- Bowler Rule Validations ---
+    # --- Bowler Rule Validations (Fixed Logic Loop) ---
     max_bowler_overs = math.ceil(st.session_state.over_limit / 5)
     is_bowler_exhausted = b_p["balls_bowled"] >= (max_bowler_overs * 6)
-    is_bowler_consecutive = (st.session_state.balls_bowled % 6 == 0 and st.session_state.balls_bowled > 0 and st.session_state.current_bowler == st.session_state.last_over_bowler)
+    
+    # Check consecutive over rule only if we are precisely at the start of a brand new over
+    is_bowler_consecutive = (rem_balls == 0 and st.session_state.balls_bowled > 0 and st.session_state.current_bowler == st.session_state.last_over_bowler)
     
     if is_bowler_consecutive:
-        st.error(f"⚠️ {st.session_state.current_bowler} cannot bowl consecutive overs! Change bowler in Lineup Overrides.")
+        st.error(f"⚠️ {st.session_state.current_bowler} cannot bowl consecutive overs! Change bowler in the 'Setup Lineup Overrides' box below.")
     elif is_bowler_exhausted:
         st.error(f"⚠️ {st.session_state.current_bowler} reached the maximum allocation limit ({max_bowler_overs} overs)!")
 
@@ -172,9 +181,10 @@ elif st.session_state.step == 'live_match':
             st.session_state.striker, st.session_state.non_striker = st.session_state.non_striker, st.session_state.striker
 
     def check_over_completion():
+        # Record who bowled the over right before strike rotates on over change
         if st.session_state.balls_bowled % 6 == 0 and st.session_state.balls_bowled > 0:
-            st.session_state.striker, st.session_state.non_striker = st.session_state.non_striker, st.session_state.striker
             st.session_state.last_over_bowler = st.session_state.current_bowler
+            st.session_state.striker, st.session_state.non_striker = st.session_state.non_striker, st.session_state.striker
 
     def score_normal_delivery(runs):
         st.session_state.bat_squad[st.session_state.striker]["runs"] += runs
@@ -351,7 +361,12 @@ elif st.session_state.step == 'live_match':
         with st.expander("🔄 Setup Lineup Overrides"):
             bowlers = list(st.session_state.bowl_squad.keys())
             st.session_state.non_striker = st.selectbox("Non-Striker Override", all_active, index=all_active.index(st.session_state.non_striker))
-            st.session_state.current_bowler = st.selectbox("Bowler Override", bowlers, index=bowlers.index(st.session_state.current_bowler))
+            
+            # Dropping down a new bowler here instantly triggers st.rerun() and evaluates rules seamlessly
+            chosen_bowler = st.selectbox("Bowler Override", bowlers, index=bowlers.index(st.session_state.current_bowler))
+            if chosen_bowler != st.session_state.current_bowler:
+                st.session_state.current_bowler = chosen_bowler
+                st.rerun()
 
     # Real-time Match Stream Log
     if st.session_state.match_log:
