@@ -85,7 +85,7 @@ def init_player():
     return {
         "runs": 0, "balls_faced": 0, "fours": 0, "sixes": 0, "strike_rate": "None",
         "mode_of_dismissal": "not out", "balls_bowled": 0, "wides": 0, "no_balls": 0,
-        "runs_given": 0, "wickets": 0, "economy": "None"
+        "runs_given": 0, "wickets": 0, "economy": "None", "fielding_impacts": 0
     }
 
 # --- 1. Match Setup ---
@@ -292,7 +292,6 @@ elif st.session_state.step == 'live_match':
         with r3_c2:
             if st.button(f"+{uncommon_val}", disabled=disable_scoring, use_container_width=True): score_normal_delivery(uncommon_val)
         with r3_c3:
-            # --- Changed from Active Striker to Current Bowler for easy over transitions ---
             bowlers_list = list(st.session_state.bowl_squad.keys())
             chosen_bowler = st.selectbox("Bowler", bowlers_list, index=bowlers_list.index(st.session_state.current_bowler), label_visibility="collapsed")
             if chosen_bowler != st.session_state.current_bowler:
@@ -345,6 +344,12 @@ elif st.session_state.step == 'live_match':
             w_mode = st.selectbox("Method of Dismissal", ["Bowled", "Caught", "LBW", "Stumped", "Run Out", "Hit Wicket", "Mankad"])
             delivery_context = st.radio("Context", ["Normal", "Wide", "No Ball"], horizontal=True)
             
+            # Request fielder inputs if dismissal type impacts fielding stats
+            fielding_team_list = list(st.session_state.bowl_squad.keys())
+            fielder_involved = None
+            if w_mode in ["Caught", "Stumped", "Run Out", "Mankad"]:
+                fielder_involved = st.selectbox("Select Fielder Responsible:", fielding_team_list)
+
             if delivery_context in ["Wide", "No Ball"] and w_mode not in ["Run Out", "Mankad", "Stumped"]:
                 st.warning(f"⚠️ Cannot dismiss via '{w_mode}' on a {delivery_context}.")
             else:
@@ -355,6 +360,9 @@ elif st.session_state.step == 'live_match':
                     
                     if st.button("Confirm Run Out", type="primary", use_container_width=True, disabled=disable_scoring):
                         st.session_state.bat_squad[target_batter]["mode_of_dismissal"] = "run out"
+                        if fielder_involved:
+                            st.session_state.bowl_squad[fielder_involved]["fielding_impacts"] += 1
+                            
                         if delivery_context == "Wide":
                             st.session_state.bowl_squad[st.session_state.current_bowler]["wides"] += (ro_runs + 1)
                             st.session_state.score += (ro_runs + 1)
@@ -389,6 +397,10 @@ elif st.session_state.step == 'live_match':
                     if st.button("Confirm Wicket", type="primary", use_container_width=True, disabled=disable_scoring):
                         out_p = st.session_state.non_striker if w_mode == "Mankad" else st.session_state.striker
                         st.session_state.bat_squad[out_p]["mode_of_dismissal"] = w_mode
+                        
+                        if w_mode in ["Caught", "Stumped", "Mankad"] and fielder_involved:
+                            st.session_state.bowl_squad[fielder_involved]["fielding_impacts"] += 1
+
                         if w_mode != "Mankad":
                             st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
                             st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
@@ -414,13 +426,31 @@ elif st.session_state.step == 'live_match':
     if st.session_state.match_log:
         st.caption(f"**Recent:** {' | '.join(st.session_state.match_log[-8:])}")
 
-    # --- Full Scorecards Display Tables (Height bounds completely removed) ---
+    # --- Full Scorecards & MVP Data Processing ---
     df_bat = pd.DataFrame.from_dict(st.session_state.bat_squad, orient='index')[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]]
-    df_bowl = pd.DataFrame.from_dict(st.session_state.bowl_squad, orient='index')[["balls_bowled", "wides", "no_balls", "runs_given", "wickets", "economy"]]
+    df_bowl = pd.DataFrame.from_dict(st.session_state.bowl_squad, orient='index')[["balls_bowled", "wides", "no_balls", "runs_given", "wickets", "economy", "fielding_impacts"]]
     
-    t1, t2 = st.tabs(["Batting", "Bowling"])
+    # Generate unified list of unique players across both squads to rank MVP points
+    mvp_records = {}
+    for team_squad in [st.session_state.t1_squad, st.session_state.t2_squad]:
+        for player, stats in team_squad.items():
+            runs = stats.get("runs", 0)
+            wickets = stats.get("wickets", 0)
+            fielding = stats.get("fielding_impacts", 0)
+            # 1 pt per run, 20 pts per wicket, 8 pts per field impact
+            total_points = (runs * 1) + (wickets * 20) + (fielding * 8)
+            mvp_records[player] = {
+                "Runs": runs,
+                "Wickets": wickets,
+                "Fielding Impact": fielding,
+                "Total MVP Points": total_points
+            }
+    df_mvp = pd.DataFrame.from_dict(mvp_records, orient='index').sort_values(by="Total MVP Points", ascending=False)
+
+    t1, t2, t3 = st.tabs(["Batting", "Bowling", "🏆 MVP Leaderboard"])
     with t1: st.dataframe(df_bat, use_container_width=True)
     with t2: st.dataframe(df_bowl, use_container_width=True)
+    with t3: st.dataframe(df_mvp, use_container_width=True)
 
     # Innings Transitions Boundary Handlers
     total_allowed_balls = st.session_state.over_limit * 6
