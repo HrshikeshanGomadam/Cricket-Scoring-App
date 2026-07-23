@@ -268,7 +268,7 @@ elif st.session_state.step == 'live_match':
                 st.rerun()
                 
     else:
-        # Reverted Matrix Scoring Box (3 Columns Grid Layout)
+        # Matrix Scoring Box (3 Columns Grid Layout)
         r1_c1, r1_c2, r1_c3 = st.columns(3)
         r2_c1, r2_c2, r2_c3 = st.columns(3)
         r3_c1, r3_c2, r3_c3 = st.columns(3)
@@ -292,8 +292,12 @@ elif st.session_state.step == 'live_match':
         with r3_c2:
             if st.button(f"+{uncommon_val}", disabled=disable_scoring, use_container_width=True): score_normal_delivery(uncommon_val)
         with r3_c3:
-            all_active = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
-            st.session_state.striker = st.selectbox("Striker", all_active, index=all_active.index(st.session_state.striker), label_visibility="collapsed")
+            # --- Changed from Active Striker to Current Bowler for easy over transitions ---
+            bowlers_list = list(st.session_state.bowl_squad.keys())
+            chosen_bowler = st.selectbox("Bowler", bowlers_list, index=bowlers_list.index(st.session_state.current_bowler), label_visibility="collapsed")
+            if chosen_bowler != st.session_state.current_bowler:
+                st.session_state.current_bowler = chosen_bowler
+                st.rerun()
 
         # --- Collapsible Advanced Expanders ---
         with st.expander("➕ Extras (Wd / Nb / Byes)"):
@@ -402,13 +406,9 @@ elif st.session_state.step == 'live_match':
                         st.rerun()
 
         with st.expander("🔄 Setup Lineup Overrides"):
-            bowlers = list(st.session_state.bowl_squad.keys())
+            all_active = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out"]
+            st.session_state.striker = st.selectbox("Striker Override", all_active, index=all_active.index(st.session_state.striker))
             st.session_state.non_striker = st.selectbox("Non-Striker Override", all_active, index=all_active.index(st.session_state.non_striker))
-            
-            chosen_bowler = st.selectbox("Bowler Override", bowlers, index=bowlers.index(st.session_state.current_bowler))
-            if chosen_bowler != st.session_state.current_bowler:
-                st.session_state.current_bowler = chosen_bowler
-                st.rerun()
 
     # Real-time Match Stream Log
     if st.session_state.match_log:
