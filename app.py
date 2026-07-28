@@ -42,7 +42,6 @@ st.markdown("""
         .streamlit-expanderContent { padding: 8px !important; }
         div[data-testid="stDataFrame"] { font-size: 0.8rem !important; }
 
-        /* Commentary Card Layout Styling */
         .commentary-ball {
             padding: 6px 10px;
             margin-bottom: 4px;
@@ -77,7 +76,7 @@ if 't2_squad' not in st.session_state:
 if 'match_log' not in st.session_state:
     st.session_state.match_log = []
 if 'commentary' not in st.session_state:
-    st.session_state.commentary = [] # Stores lists/dicts of deliveries & over summaries
+    st.session_state.commentary = [] 
 if 'over_runs' not in st.session_state:
     st.session_state.over_runs = 0
 if 'over_wickets' not in st.session_state:
@@ -88,6 +87,8 @@ if 'last_out_position' not in st.session_state:
     st.session_state.last_out_position = None
 if 'last_over_bowler' not in st.session_state:
     st.session_state.last_over_bowler = None
+if 'innings_1_batting' not in st.session_state:
+    st.session_state.innings_1_batting = None
 
 def init_player():
     return {
@@ -96,7 +97,6 @@ def init_player():
         "runs_given": 0, "wickets": 0, "economy": "None", "fielding_points": 0
     }
 
-# --- Helper to convert total balls to string notation ---
 def format_overs(balls):
     return f"{balls // 6}.{balls % 6}"
 
@@ -154,12 +154,14 @@ elif st.session_state.step == 'toss':
                 st.session_state.bat_squad = st.session_state.t1_squad
                 st.session_state.bowl_squad = st.session_state.t2_squad
                 st.session_state.max_wickets = st.session_state.num_players_1 - 1
+                st.session_state.innings_1_batting = st.session_state.team_1
             else:
                 st.session_state.batting_team = st.session_state.team_2
                 st.session_state.bowling_team = st.session_state.team_1
                 st.session_state.bat_squad = st.session_state.t2_squad
                 st.session_state.bowl_squad = st.session_state.t1_squad
                 st.session_state.max_wickets = st.session_state.num_players_2 - 1
+                st.session_state.innings_1_batting = st.session_state.team_2
             
             st.session_state.score = 0
             st.session_state.wickets = 0
@@ -190,7 +192,7 @@ elif st.session_state.step == 'openers':
                 st.session_state.step = 'live_match'
                 st.rerun()
 
-# --- 4. Live Match Dashboard Hub ---
+# --- 4. Live Match Interface ---
 elif st.session_state.step == 'live_match':
     overs = st.session_state.balls_bowled // 6
     rem_balls = st.session_state.balls_bowled % 6
@@ -198,7 +200,6 @@ elif st.session_state.step == 'live_match':
     available_batters = [k for k, v in st.session_state.bat_squad.items() if v["mode_of_dismissal"] == "not out" and k != st.session_state.striker and k != st.session_state.non_striker]
     fielding_team_list = list(st.session_state.bowl_squad.keys())
     
-    # Global Live Header Strip
     ov_str = f"{overs}.{rem_balls}"
     st.markdown(f"### **{st.session_state.batting_team}**: `{st.session_state.score}/{st.session_state.wickets}` ({ov_str} Ov)")
     
@@ -209,7 +210,6 @@ elif st.session_state.step == 'live_match':
     st.caption(f"🏏 **{st.session_state.striker}***: {s_p['runs']}({s_p['balls_faced']}) | {st.session_state.non_striker}: {ns_p['runs']}({ns_p['balls_faced']})")
     st.caption(f"🥎 **{st.session_state.current_bowler}**: {b_p['wickets']}-{b_p['runs_given'] + b_p['wides'] + b_p['no_balls']} ({format_overs(b_p['balls_bowled'])} Ov)")
 
-    # Define Top Tabs
     tab_scoring, tab_commentary, tab_scorecards, tab_mvp = st.tabs([
         "⚡ Live Scoring Control", 
         "💬 Ball-by-Ball Commentary", 
@@ -217,7 +217,6 @@ elif st.session_state.step == 'live_match':
         "🏆 MVP Leaderboard"
     ])
 
-    # Core Mathematical Metrics Recomputation Engines
     def recalculate_metrics():
         for b in st.session_state.bat_squad:
             faced = st.session_state.bat_squad[b]["balls_faced"]
@@ -234,18 +233,13 @@ elif st.session_state.step == 'live_match':
         if runs % 2 != 0:
             st.session_state.striker, st.session_state.non_striker = st.session_state.non_striker, st.session_state.striker
 
-    def check_over_completion(last_ball_desc):
+    def check_over_completion():
         if st.session_state.balls_bowled % 6 == 0 and st.session_state.balls_bowled > 0:
             current_over_num = st.session_state.balls_bowled // 6
             summary_string = f"🛑 End of Over {current_over_num} | Runs conceded: {st.session_state.over_runs} | Wickets: {st.session_state.over_wickets}"
-            
-            # Inject summary event into ESPN log stream
             st.session_state.commentary.append({"type": "over_break", "text": summary_string})
-            
-            # Reset over track variables
             st.session_state.over_runs = 0
             st.session_state.over_wickets = 0
-            
             st.session_state.last_over_bowler = st.session_state.current_bowler
             st.session_state.striker, st.session_state.non_striker = st.session_state.non_striker, st.session_state.striker
 
@@ -259,18 +253,15 @@ elif st.session_state.step == 'live_match':
         st.session_state.bowl_squad[st.session_state.current_bowler]["balls_bowled"] += 1
         st.session_state.score += runs
         st.session_state.balls_bowled += 1
-        
-        # Track parameters for over updates
         st.session_state.over_runs += runs
         
-        # Log generation for commentary mapping
         c_ov = format_overs(st.session_state.balls_bowled)
         desc = f"{c_ov} | {st.session_state.current_bowler} to {st.session_state.striker}: {runs} run(s)"
         st.session_state.commentary.append({"type": "ball", "text": desc})
         st.session_state.match_log.append(str(runs))
         
         handle_strike_rotation(runs)
-        check_over_completion(desc)
+        check_over_completion()
         recalculate_metrics()
         st.rerun()
 
@@ -300,7 +291,6 @@ elif st.session_state.step == 'live_match':
                     st.session_state.last_out_position = None
                     st.rerun()
         else:
-            # 3x3 Interaction Matrix Grid
             r1_c1, r1_c2, r1_c3 = st.columns(3)
             r2_c1, r2_c2, r2_c3 = st.columns(3)
             r3_c1, r3_c2, r3_c3 = st.columns(3)
@@ -330,7 +320,6 @@ elif st.session_state.step == 'live_match':
                     st.session_state.current_bowler = chosen_bowler
                     st.rerun()
 
-            # Extras Expander Panel
             with st.expander("➕ Extras (Wd / Nb / Byes)"):
                 ex_type = st.selectbox("Select Extra Type", ["Wide", "No Ball", "Leg Byes", "Byes"])
                 ex_runs = st.number_input("Additional Runs:", min_value=0, max_value=10, value=0, step=1)
@@ -364,34 +353,35 @@ elif st.session_state.step == 'live_match':
                         st.session_state.balls_bowled += 1
                         st.session_state.commentary.append({"type": "ball", "text": f"{format_overs(st.session_state.balls_bowled)} | {st.session_state.current_bowler}: Extra ({ex_type}) +{ex_runs} runs"})
                         handle_strike_rotation(ex_runs)
-                        check_over_completion("")
+                        check_over_completion()
                     recalculate_metrics()
                     st.rerun()
 
-            # Dismissals Expander Panel
             with st.expander("💥 Dismissals / Wickets"):
                 w_mode = st.selectbox("Method of Dismissal", ["Bowled", "Caught", "LBW", "Stumped", "Run Out", "Hit Wicket", "Mankad"])
                 delivery_context = st.radio("Context", ["Normal", "Wide", "No Ball"], horizontal=True)
                 
-                if w_mode in ["Caught", "Stumped", "Run Out", "Mankad"]:
-                    if w_mode == "Run Out":
-                        is_direct = st.radio("Was it a Direct Hit?", ["Yes", "No"], horizontal=True)
-                        if is_direct == "Yes":
-                            fielder_direct = st.selectbox("Select Fielder (Direct Hit):", fielding_team_list)
-                        else:
-                            c1, c2 = st.columns(2)
-                            with c1: thrower = st.selectbox("Select Thrower:", fielding_team_list)
-                            with c2: collector = st.selectbox("Select Collector:", fielding_team_list)
+                target_batter = st.session_state.striker
+                if w_mode == "Run Out":
+                    target_batter = st.selectbox("Batter Run Out", [st.session_state.striker, st.session_state.non_striker])
+                    is_direct = st.radio("Was it a Direct Hit?", ["Yes", "No"], horizontal=True)
+                    if is_direct == "Yes":
+                        fielder_direct = st.selectbox("Select Fielder (Direct Hit):", fielding_team_list)
                     else:
-                        fielder_involved = st.selectbox("Select Fielder Responsible:", fielding_team_list)
+                        c1, c2 = st.columns(2)
+                        with c1: thrower = st.selectbox("Select Thrower:", fielding_team_list)
+                        with c2: collector = st.selectbox("Select Collector:", fielding_team_list)
+                    ro_runs = st.number_input("Runs Completed Before Run Out:", min_value=0, max_value=6, value=0)
+                elif w_mode in ["Caught", "Stumped", "Mankad"]:
+                    fielder_involved = st.selectbox("Select Fielder Responsible:", fielding_team_list)
+                    if w_mode == "Mankad":
+                        target_batter = st.session_state.non_striker
 
                 if st.button("Confirm Wicket Event", type="primary", use_container_width=True, disabled=disable_scoring):
                     current_bowler_name = st.session_state.current_bowler
-                    out_p = st.session_state.non_striker if w_mode == "Mankad" else st.session_state.striker
                     st.session_state.over_wickets += 1
                     
                     if w_mode == "Run Out":
-                        target_batter = st.selectbox("Batter Run Out", [st.session_state.striker, st.session_state.non_striker], label_visibility="collapsed") 
                         if is_direct == "Yes":
                             st.session_state.bowl_squad[fielder_direct]["fielding_points"] += 8
                             label = f"runout ({fielder_direct})"
@@ -400,13 +390,32 @@ elif st.session_state.step == 'live_match':
                             st.session_state.bowl_squad[collector]["fielding_points"] += 3
                             label = f"runout ({thrower})/({collector})"
                         
-                        st.session_state.bat_squad[out_p]["mode_of_dismissal"] = label
+                        st.session_state.bat_squad[target_batter]["mode_of_dismissal"] = label
                         st.session_state.wickets += 1
-                        st.session_state.balls_bowled += 1
-                        st.session_state.commentary.append({"type": "ball", "text": f"{format_overs(st.session_state.balls_bowled)} | OUT! Run Out Involving Fielder(s)"})
-                        st.session_state.last_out_position = 'striker'
+                        
+                        # Apply context conditions properly to bowler & score totals
+                        if delivery_context == "Wide":
+                            st.session_state.bowl_squad[current_bowler_name]["wides"] += (ro_runs + 1)
+                            st.session_state.score += (ro_runs + 1)
+                            st.session_state.over_runs += (ro_runs + 1)
+                        elif delivery_context == "No Ball":
+                            st.session_state.bowl_squad[current_bowler_name]["no_balls"] += (ro_runs + 1)
+                            st.session_state.score += (ro_runs + 1)
+                            st.session_state.over_runs += (ro_runs + 1)
+                            st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
+                        else:
+                            st.session_state.bowl_squad[current_bowler_name]["balls_bowled"] += 1
+                            st.session_state.bowl_squad[current_bowler_name]["runs_given"] += ro_runs
+                            st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
+                            st.session_state.score += ro_runs
+                            st.session_state.over_runs += ro_runs
+                            st.session_state.balls_bowled += 1
+                        
+                        st.session_state.commentary.append({"type": "ball", "text": f"{format_overs(st.session_state.balls_bowled)} | OUT! Run Out: {target_batter} dismissed."})
+                        st.session_state.last_out_position = 'striker' if target_batter == st.session_state.striker else 'non_striker'
                         st.session_state.wicket_trigger = True
-                        check_over_completion("")
+                        if delivery_context not in ["Wide", "No Ball"]: 
+                            check_over_completion()
                     else:
                         if w_mode == "Bowled": label = f"b ({current_bowler_name})"
                         elif w_mode == "LBW": label = f"lbw b ({current_bowler_name})"
@@ -420,7 +429,7 @@ elif st.session_state.step == 'live_match':
                             label = f"mankad ({fielder_involved})"
                             st.session_state.bowl_squad[fielder_involved]["fielding_points"] += 8
                         
-                        st.session_state.bat_squad[out_p]["mode_of_dismissal"] = label
+                        st.session_state.bat_squad[target_batter]["mode_of_dismissal"] = label
                         if w_mode != "Mankad":
                             st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
                             st.session_state.bowl_squad[current_bowler_name]["balls_bowled"] += 1
@@ -428,10 +437,10 @@ elif st.session_state.step == 'live_match':
                             st.session_state.balls_bowled += 1
                         
                         st.session_state.wickets += 1
-                        st.session_state.commentary.append({"type": "ball", "text": f"{format_overs(st.session_state.balls_bowled)} | OUT! {out_p} dismissed via {w_mode}."})
+                        st.session_state.commentary.append({"type": "ball", "text": f"{format_overs(st.session_state.balls_bowled)} | OUT! {target_batter} dismissed via {w_mode}."})
                         st.session_state.last_out_position = 'non_striker' if w_mode == "Mankad" else 'striker'
                         st.session_state.wicket_trigger = True
-                        if w_mode != "Mankad": check_over_completion("")
+                        if w_mode != "Mankad": check_over_completion()
                         
                     recalculate_metrics()
                     st.rerun()
@@ -441,49 +450,62 @@ elif st.session_state.step == 'live_match':
                 st.session_state.striker = st.selectbox("Striker Override", all_active, index=all_active.index(st.session_state.striker))
                 st.session_state.non_striker = st.selectbox("Non-Striker Override", all_active, index=all_active.index(st.session_state.non_striker))
 
-    # --- TAB 2: ESPN-STYLE COMMENTARY STREAM ---
+    # --- TAB 2: ESPN COMMENTARY LOG ---
     with tab_commentary:
         st.subheader("📋 Ball-by-Ball Timeline")
         if not st.session_state.commentary:
             st.write("_No deliveries bowled yet._")
         else:
-            # Output in reverse chronological order (newest on top)
             for entry in reversed(st.session_state.commentary):
                 if entry["type"] == "ball":
                     st.markdown(f'<div class="commentary-ball">🏏 {entry["text"]}</div>', unsafe_allow_html=True)
                 elif entry["type"] == "over_break":
                     st.markdown(f'<div class="commentary-over-break">{entry["text"]}</div>', unsafe_allow_html=True)
 
-    # --- TAB 3: MATCH SCORECARDS (PERSISTENT & ALWAYS VISIBLE) ---
+    # --- TAB 3: SCORECARDS SEPARATED BY INNINGS ---
     with tab_scorecards:
-        # Generate clean dataframe objects rendering overs in string representations
-        def generate_clean_bowl_df(squad_dict):
+        # Helper filtering logic showing only players who actually bowled
+        def generate_active_bowl_df(squad_dict):
             df = pd.DataFrame.from_dict(squad_dict, orient='index').copy()
             if not df.empty:
                 df['Overs'] = df['balls_bowled'].apply(format_overs)
-                return df[["Overs", "wides", "no_balls", "runs_given", "wickets", "economy"]]
-            return df
+                active_df = df[(df['balls_bowled'] > 0) | (df['wides'] > 0) | (df['no_balls'] > 0)]
+                if not active_df.empty:
+                    return active_df[["Overs", "wides", "no_balls", "runs_given", "wickets", "economy"]]
+            return pd.DataFrame(columns=["Overs", "wides", "no_balls", "runs_given", "wickets", "economy"])
 
-        st.subheader(f"🔴 {st.session_state.team_1} Scorecard Performance")
-        col_t1_bat, col_t1_bowl = st.columns(2)
-        with col_t1_bat:
-            st.markdown("**Batting**")
-            df1 = pd.DataFrame.from_dict(st.session_state.t1_squad, orient='index')
-            st.dataframe(df1[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]] if not df1.empty else df1, use_container_width=True)
-        with col_t1_bowl:
-            st.markdown("**Bowling**")
-            st.dataframe(generate_clean_bowl_df(st.session_state.t1_squad), use_container_width=True)
+        # Identify Team Identity Matrix per Innings Flow
+        if st.session_state.innings_1_batting == st.session_state.team_1:
+            inn1_bat, inn1_bowl = st.session_state.t1_squad, st.session_state.t2_squad
+            inn1_bat_name, inn1_bowl_name = st.session_state.team_1, st.session_state.team_2
+            inn2_bat, inn2_bowl = st.session_state.t2_squad, st.session_state.t1_squad
+            inn2_bat_name, inn2_bowl_name = st.session_state.team_2, st.session_state.team_1
+        else:
+            inn1_bat, inn1_bowl = st.session_state.t2_squad, st.session_state.t1_squad
+            inn1_bat_name, inn1_bowl_name = st.session_state.team_2, st.session_state.team_1
+            inn2_bat, inn2_bowl = st.session_state.t1_squad, st.session_state.t2_squad
+            inn2_bat_name, inn2_bowl_name = st.session_state.team_1, st.session_state.team_2
+
+        st.subheader(f"1️⃣ First Innings: {inn1_bat_name} vs {inn1_bowl_name}")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**Batting: {inn1_bat_name}**")
+            df_inn1_bat = pd.DataFrame.from_dict(inn1_bat, orient='index')
+            st.dataframe(df_inn1_bat[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]] if not df_inn1_bat.empty else df_inn1_bat, use_container_width=True)
+        with c2:
+            st.markdown(f"**Bowling: {inn1_bowl_name}**")
+            st.dataframe(generate_active_bowl_df(inn1_bowl), use_container_width=True)
 
         st.write("---")
-        st.subheader(f"🔵 {st.session_state.team_2} Scorecard Performance")
-        col_t2_bat, col_t2_bowl = st.columns(2)
-        with col_t2_bat:
-            st.markdown("**Batting**")
-            df2 = pd.DataFrame.from_dict(st.session_state.t2_squad, orient='index')
-            st.dataframe(df2[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]] if not df2.empty else df2, use_container_width=True)
-        with col_t2_bowl:
-            st.markdown("**Bowling**")
-            st.dataframe(generate_clean_bowl_df(st.session_state.t2_squad), use_container_width=True)
+        st.subheader(f"2️⃣ Second Innings: {inn2_bat_name} vs {inn2_bowl_name}")
+        c3, c4 = st.columns(2)
+        with c3:
+            st.markdown(f"**Batting: {inn2_bat_name}**")
+            df_inn2_bat = pd.DataFrame.from_dict(inn2_bat, orient='index')
+            st.dataframe(df_inn2_bat[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]] if not df_inn2_bat.empty else df_inn2_bat, use_container_width=True)
+        with c4:
+            st.markdown(f"**Bowling: {inn2_bowl_name}**")
+            st.dataframe(generate_active_bowl_df(inn2_bowl), use_container_width=True)
 
     # --- TAB 4: MVP LEADERBOARD ---
     with tab_mvp:
