@@ -620,9 +620,6 @@ elif st.session_state.step == 'live_match':
                 clear_backup()
                 st.session_state.clear()
                 st.rerun()
-            font-size: 1rem !important;
-            text-align: center !important;
-        }
 
         .streamlit-expanderHeader { padding: 6px 10px !important; font-size: 0.9rem !important; }
         .streamlit-expanderContent { padding: 8px !important; }
