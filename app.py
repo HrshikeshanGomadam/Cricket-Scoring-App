@@ -620,7 +620,7 @@ elif st.session_state.step == 'live_match':
                 clear_backup()
                 st.session_state.clear()
                 st.rerun()
-            font-size: 1.1rem !important;
+            font-size: 1rem !important;
             text-align: center !important;
         }
 
