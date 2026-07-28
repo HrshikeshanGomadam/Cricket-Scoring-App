@@ -3,14 +3,25 @@ import pandas as pd
 import math
 import json
 import os
+import random
 
 st.set_page_config(page_title="CricScore", layout="centered")
 
-DB_FILE = "cricscore_backup.json"
+# --- Persistent Storage Directory Setup ---
+SAVE_DIR = "match_backups"
+if not os.path.exists(SAVE_DIR):
+    os.makedirs(SAVE_DIR)
 
-# --- Persistent Storage Layer Engines ---
+def get_file_path(match_code):
+    """Returns the unique file path for a given match code."""
+    return os.path.join(SAVE_DIR, f"match_{match_code}.json")
+
 def save_match_state():
-    """Serializes core session state keys into a local JSON file."""
+    """Serializes core session state keys into a match-specific JSON file."""
+    match_code = st.session_state.get('match_code')
+    if not match_code:
+        return
+        
     keys_to_save = [
         'step', 't1_squad', 't2_squad', 'match_log', 'commentary', 
         'over_runs', 'over_wickets', 'wicket_trigger', 'last_out_position', 
@@ -20,19 +31,20 @@ def save_match_state():
         'score', 'wickets', 'balls_bowled', 'innings', 'striker', 
         'non_striker', 'current_bowler', 'target'
     ]
-    state_data = {}
+    state_data = {'match_code': match_code}
     for key in keys_to_save:
         if key in st.session_state:
             state_data[key] = st.session_state[key]
             
-    with open(DB_FILE, "w") as f:
+    with open(get_file_path(match_code), "w") as f:
         json.dump(state_data, f, indent=4)
 
-def load_match_state():
-    """Loads backup match data into session state if it exists."""
-    if os.path.exists(DB_FILE):
+def load_match_state(match_code):
+    """Loads a specific match backup file into the session state."""
+    target_path = get_file_path(match_code)
+    if os.path.exists(target_path):
         try:
-            with open(DB_FILE, "r") as f:
+            with open(target_path, "r") as f:
                 state_data = json.load(f)
             for key, value in state_data.items():
                 st.session_state[key] = value
@@ -41,20 +53,15 @@ def load_match_state():
             return False
     return False
 
-def clear_backup():
-    """Deletes the backup file upon match completion or reset."""
-    if os.path.exists(DB_FILE):
-        os.remove(DB_FILE)
+def clear_backup(match_code):
+    """Deletes the specific match backup file upon completion or reset."""
+    target_path = get_file_path(match_code)
+    if os.path.exists(target_path):
+        os.remove(target_path)
 
-# --- Initialize / Hydrate Session State ---
-if 'initialized' not in st.session_state:
-    has_backup = load_match_state()
-    st.session_state.initialized = True
-    if has_backup:
-        st.toast("🔄 Recovered past match data from auto-save!", icon="ℹ️")
-
+# --- Initialize Core Steps ---
 if 'step' not in st.session_state:
-    st.session_state.step = 'setup'
+    st.session_state.step = 'auth' # Start at the new Match Code portal
 if 't1_squad' not in st.session_state:
     st.session_state.t1_squad = {}
 if 't2_squad' not in st.session_state:
@@ -144,9 +151,32 @@ def init_player():
 def format_overs(balls):
     return f"{balls // 6}.{balls % 6}"
 
+# --- 0. Match Code / Recovery Portal ---
+if st.session_state.step == 'auth':
+    st.header("Match Code Portal")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Start New Match")
+        if st.button("Generate Match Code", type="primary", use_container_width=True):
+            st.session_state.match_code = str(random.randint(100000, 999999))
+            st.session_state.step = 'setup'
+            st.rerun()
+            
+    with col2:
+        st.subheader("Resume Match")
+        input_code = st.text_input("Enter 6-Digit Match Code:", max_chars=6, placeholder="e.g., 548291")
+        if st.button("Load Saved Match", use_container_width=True):
+            if input_code.strip() and load_match_state(input_code.strip()):
+                st.toast(f"🔄 Recovered Match #{input_code}!", icon="ℹ️")
+                st.rerun()
+            else:
+                st.error("Invalid Match Code or no backup found for this code.")
+
 # --- 1. Match Setup ---
-if st.session_state.step == 'setup':
-    st.header("Match Setup")
+elif st.session_state.step == 'setup':
+    st.header(f"Match Setup (Code: {st.session_state.match_code})")
     with st.form("setup_form"):
         over_limit = st.number_input("Match Overs:", min_value=1, value=20, step=1)
         col1, col2 = st.columns(2)
@@ -169,7 +199,7 @@ if st.session_state.step == 'setup':
 
 # --- 2. Squad Setup ---
 elif st.session_state.step == 'squads':
-    st.header("Enter Squads")
+    st.header(f"Enter Squads (Code: {st.session_state.match_code})")
     with st.form("squad_form"):
         col1, col2 = st.columns(2)
         with col1:
@@ -188,7 +218,7 @@ elif st.session_state.step == 'squads':
 
 # --- 3. Toss Info ---
 elif st.session_state.step == 'toss':
-    st.header("Toss Details")
+    st.header(f"Toss Details (Code: {st.session_state.match_code})")
     with st.form("toss_form"):
         toss_victor = st.radio("Who won the toss?", [st.session_state.team_1, st.session_state.team_2])
         toss_result = st.radio("Opted to:", ["Bat", "Bowl"])
@@ -220,7 +250,7 @@ elif st.session_state.step == 'toss':
 
 # --- 3.5 Opening Batter Selection Flow ---
 elif st.session_state.step == 'openers':
-    st.header("Select Opening Batters")
+    st.header(f"Select Opening Batters (Code: {st.session_state.match_code})")
     batters_list = list(st.session_state.bat_squad.keys())
     bowlers_list = list(st.session_state.bowl_squad.keys())
     
@@ -249,7 +279,7 @@ elif st.session_state.step == 'live_match':
     fielding_team_list = list(st.session_state.bowl_squad.keys())
     
     ov_str = f"{overs}.{rem_balls}"
-    st.markdown(f"### **{st.session_state.batting_team}**: `{st.session_state.score}/{st.session_state.wickets}` ({ov_str} Ov)")
+    st.markdown(f"### **{st.session_state.batting_team}**: `{st.session_state.score}/{st.session_state.wickets}` ({ov_str} Ov) | Code: `{st.session_state.match_code}`")
     
     s_p = st.session_state.bat_squad[st.session_state.striker]
     ns_p = st.session_state.bat_squad[st.session_state.non_striker]
@@ -618,6 +648,6 @@ elif st.session_state.step == 'live_match':
                 st.write(f"### **{st.session_state.bowling_team}** won by {st.session_state.target - 1 - st.session_state.score} runs!**")
                 
             if st.button("Reset Configuration", use_container_width=True):
-                clear_backup()
+                clear_backup(st.session_state.match_code)
                 st.session_state.clear()
                 st.rerun()
