@@ -77,7 +77,7 @@ if 'innings_1_batting' not in st.session_state:
     st.session_state.innings_1_batting = None
 
 # --- Custom CSS Styling ---
-st.markdown("""
+st.markdown(r"""
     <style>
         .block-container {
             padding-top: 1rem !important;
