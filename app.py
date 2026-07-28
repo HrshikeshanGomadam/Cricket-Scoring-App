@@ -289,6 +289,10 @@ elif st.session_state.step == 'live_match':
                         st.session_state.non_striker = incoming_choice
                     st.session_state.wicket_trigger = False
                     st.session_state.last_out_position = None
+                    
+                    # Check over completion safely here AFTER the new batter is settled
+                    check_over_completion()
+                    recalculate_metrics()
                     st.rerun()
         else:
             r1_c1, r1_c2, r1_c3 = st.columns(3)
@@ -393,7 +397,6 @@ elif st.session_state.step == 'live_match':
                         st.session_state.bat_squad[target_batter]["mode_of_dismissal"] = label
                         st.session_state.wickets += 1
                         
-                        # Apply context conditions properly to bowler & score totals
                         if delivery_context == "Wide":
                             st.session_state.bowl_squad[current_bowler_name]["wides"] += (ro_runs + 1)
                             st.session_state.score += (ro_runs + 1)
@@ -414,7 +417,9 @@ elif st.session_state.step == 'live_match':
                         st.session_state.commentary.append({"type": "ball", "text": f"{format_overs(st.session_state.balls_bowled)} | OUT! Run Out: {target_batter} dismissed."})
                         st.session_state.last_out_position = 'striker' if target_batter == st.session_state.striker else 'non_striker'
                         st.session_state.wicket_trigger = True
-                        if delivery_context not in ["Wide", "No Ball"]: 
+                        
+                        # Delayed checking for over breaks on legal ball run-outs
+                        if delivery_context not in ["Wide", "No Ball"] and is_all_out:
                             check_over_completion()
                     else:
                         if w_mode == "Bowled": label = f"b ({current_bowler_name})"
@@ -440,7 +445,10 @@ elif st.session_state.step == 'live_match':
                         st.session_state.commentary.append({"type": "ball", "text": f"{format_overs(st.session_state.balls_bowled)} | OUT! {target_batter} dismissed via {w_mode}."})
                         st.session_state.last_out_position = 'non_striker' if w_mode == "Mankad" else 'striker'
                         st.session_state.wicket_trigger = True
-                        if w_mode != "Mankad": check_over_completion()
+                        
+                        # Delayed checking for over breaks if the team is completely all out
+                        if w_mode != "Mankad" and is_all_out:
+                            check_over_completion()
                         
                     recalculate_metrics()
                     st.rerun()
@@ -462,9 +470,8 @@ elif st.session_state.step == 'live_match':
                 elif entry["type"] == "over_break":
                     st.markdown(f'<div class="commentary-over-break">{entry["text"]}</div>', unsafe_allow_html=True)
 
-    # --- TAB 3: SCORECARDS SEPARATED BY INNINGS ---
+    # --- TAB 3: MATCH SCORECARDS SEPARATED BY INNINGS ---
     with tab_scorecards:
-        # Helper filtering logic showing only players who actually bowled
         def generate_active_bowl_df(squad_dict):
             df = pd.DataFrame.from_dict(squad_dict, orient='index').copy()
             if not df.empty:
@@ -474,7 +481,6 @@ elif st.session_state.step == 'live_match':
                     return active_df[["Overs", "wides", "no_balls", "runs_given", "wickets", "economy"]]
             return pd.DataFrame(columns=["Overs", "wides", "no_balls", "runs_given", "wickets", "economy"])
 
-        # Identify Team Identity Matrix per Innings Flow
         if st.session_state.innings_1_batting == st.session_state.team_1:
             inn1_bat, inn1_bowl = st.session_state.t1_squad, st.session_state.t2_squad
             inn1_bat_name, inn1_bowl_name = st.session_state.team_1, st.session_state.team_2
