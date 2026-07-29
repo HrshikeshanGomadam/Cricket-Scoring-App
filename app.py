@@ -4,6 +4,7 @@ import math
 import json
 import os
 import random
+import copy
 
 st.set_page_config(page_title="CricScore", layout="centered")
 
@@ -16,23 +17,24 @@ def get_file_path(match_code):
     """Returns the unique file path for a given match code."""
     return os.path.join(SAVE_DIR, f"match_{match_code}.json")
 
+CORE_KEYS = [
+    'step', 't1_squad', 't2_squad', 'match_log', 'commentary', 
+    'over_runs', 'over_wickets', 'wicket_trigger', 'last_out_position', 
+    'last_over_bowler', 'innings_1_batting', 'over_limit', 'team_1', 
+    'team_2', 'num_players_1', 'num_players_2', 'batting_team', 
+    'bowling_team', 'bat_squad', 'bowl_squad', 'max_wickets', 
+    'score', 'wickets', 'balls_bowled', 'innings', 'striker', 
+    'non_striker', 'current_bowler', 'target'
+]
+
 def save_match_state():
     """Serializes core session state keys into a match-specific JSON file."""
     match_code = st.session_state.get('match_code')
     if not match_code:
         return
         
-    keys_to_save = [
-        'step', 't1_squad', 't2_squad', 'match_log', 'commentary', 
-        'over_runs', 'over_wickets', 'wicket_trigger', 'last_out_position', 
-        'last_over_bowler', 'innings_1_batting', 'over_limit', 'team_1', 
-        'team_2', 'num_players_1', 'num_players_2', 'batting_team', 
-        'bowling_team', 'bat_squad', 'bowl_squad', 'max_wickets', 
-        'score', 'wickets', 'balls_bowled', 'innings', 'striker', 
-        'non_striker', 'current_bowler', 'target'
-    ]
     state_data = {'match_code': match_code}
-    for key in keys_to_save:
+    for key in CORE_KEYS:
         if key in st.session_state:
             state_data[key] = st.session_state[key]
             
@@ -59,9 +61,33 @@ def clear_backup(match_code):
     if os.path.exists(target_path):
         os.remove(target_path)
 
+# --- Undo Engine Functionality ---
+def take_snapshot():
+    """Takes a deep copy snapshot of the current state before any mutable ball action."""
+    if 'history' not in st.session_state:
+        st.session_state.history = []
+    
+    snapshot = {}
+    for key in CORE_KEYS:
+        if key in st.session_state:
+            snapshot[key] = copy.deepcopy(st.session_state[key])
+            
+    st.session_state.history.append(snapshot)
+
+def undo_last_action():
+    """Pops the last state from history and restores it."""
+    if 'history' in st.session_state and len(st.session_state.history) > 0:
+        last_snapshot = st.session_state.history.pop()
+        for key, value in last_snapshot.items():
+            st.session_state[key] = value
+        save_match_state()
+        st.toast("⏪ Last action undone successfully!", icon="↩️")
+    else:
+        st.toast("⚠️ No actions left to undo!", icon="❌")
+
 # --- Initialize Core Steps ---
 if 'step' not in st.session_state:
-    st.session_state.step = 'auth' # Start at the new Match Code portal
+    st.session_state.step = 'auth' 
 if 't1_squad' not in st.session_state:
     st.session_state.t1_squad = {}
 if 't2_squad' not in st.session_state:
@@ -82,6 +108,8 @@ if 'last_over_bowler' not in st.session_state:
     st.session_state.last_over_bowler = None
 if 'innings_1_batting' not in st.session_state:
     st.session_state.innings_1_batting = None
+if 'history' not in st.session_state:
+    st.session_state.history = []
 
 # --- Custom CSS Styling ---
 st.markdown(r"""
@@ -154,7 +182,6 @@ def format_overs(balls):
 # --- 0. Match Code / Recovery Portal ---
 if st.session_state.step == 'auth':
     st.header("Match Code Portal")
-    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -322,6 +349,7 @@ elif st.session_state.step == 'live_match':
             st.session_state.striker, st.session_state.non_striker = st.session_state.non_striker, st.session_state.striker
 
     def score_normal_delivery(runs):
+        take_snapshot()  # Save history point
         st.session_state.bat_squad[st.session_state.striker]["runs"] += runs
         st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
         if runs == 4: st.session_state.bat_squad[st.session_state.striker]["fours"] += 1
@@ -346,6 +374,12 @@ elif st.session_state.step == 'live_match':
 
     # --- TAB 1: SCORING CONTROLS ---
     with tab_scoring:
+        # Global Undo Button placed directly at the top of controls
+        if len(st.session_state.history) > 0:
+            if st.button("↩️ Undo Last Action", type="secondary", use_container_width=True):
+                undo_last_action()
+                st.rerun()
+                
         max_bowler_overs = math.ceil(st.session_state.over_limit / 5)
         is_bowler_exhausted = b_p["balls_bowled"] >= (max_bowler_overs * 6)
         is_bowler_consecutive = (rem_balls == 0 and st.session_state.balls_bowled > 0 and st.session_state.current_bowler == st.session_state.last_over_bowler)
@@ -362,6 +396,7 @@ elif st.session_state.step == 'live_match':
             with st.form("new_batter_form"):
                 incoming_choice = st.selectbox("New Batter:", available_batters)
                 if st.form_submit_button("Bring Batter onto Field"):
+                    take_snapshot()
                     if st.session_state.last_out_position == 'striker':
                         st.session_state.striker = incoming_choice
                     else:
@@ -400,6 +435,7 @@ elif st.session_state.step == 'live_match':
                 bowlers_list = list(st.session_state.bowl_squad.keys())
                 chosen_bowler = st.selectbox("Bowler", bowlers_list, index=bowlers_list.index(st.session_state.current_bowler), label_visibility="collapsed")
                 if chosen_bowler != st.session_state.current_bowler:
+                    take_snapshot()
                     st.session_state.current_bowler = chosen_bowler
                     save_match_state()
                     st.rerun()
@@ -410,6 +446,7 @@ elif st.session_state.step == 'live_match':
                 nb_scoring_mode = st.radio("Scoring Method (NB):", ["Bat", "Byes/None"], horizontal=True)
                 
                 if st.button("Submit Extra Delivery", disabled=disable_scoring, use_container_width=True, type="primary"):
+                    take_snapshot()
                     c_ov = format_overs(st.session_state.balls_bowled)
                     if ex_type == "Wide":
                         st.session_state.bowl_squad[st.session_state.current_bowler]["wides"] += (ex_runs + 1)
@@ -463,6 +500,7 @@ elif st.session_state.step == 'live_match':
                         target_batter = st.session_state.non_striker
 
                 if st.button("Confirm Wicket Event", type="primary", use_container_width=True, disabled=disable_scoring):
+                    take_snapshot()
                     current_bowler_name = st.session_state.current_bowler
                     st.session_state.over_wickets += 1
                     
@@ -620,6 +658,7 @@ elif st.session_state.step == 'live_match':
         if st.session_state.innings == 1:
             st.warning("First Innings Completed!")
             if st.button("Switch to Second Innings", use_container_width=True, type="primary"):
+                take_snapshot()
                 st.session_state.max_wickets = st.session_state.num_players_2 - 1 if st.session_state.batting_team == st.session_state.team_2 else st.session_state.num_players_1 - 1
                 
                 # Setup targets & flip teams
