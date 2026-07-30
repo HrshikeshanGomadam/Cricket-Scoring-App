@@ -615,8 +615,7 @@ elif st.session_state.step == 'live_match':
             st.dataframe(df_inn1_bat[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]] if not df_inn1_bat.empty else df_inn1_bat, use_container_width=True)
         with c2:
             st.markdown(f"**Bowling: {inn1_bowl_name}**")
-            st.dataframe(generate_active_bowl_df(inn1_bowl), use_container_width=True)
-
+            st.dataframe(generate_active_bowl_df(inn1_bowl), use_container_width=True, height=400)
         st.write("---")
         st.subheader(f"2️⃣ Second Innings: {inn2_bat_name} vs {inn2_bowl_name}")
         c3, c4 = st.columns(2)
@@ -626,7 +625,7 @@ elif st.session_state.step == 'live_match':
             st.dataframe(df_inn2_bat[["runs", "balls_faced", "fours", "sixes", "strike_rate", "mode_of_dismissal"]] if not df_inn2_bat.empty else df_inn2_bat, use_container_width=True)
         with c4:
             st.markdown(f"**Bowling: {inn2_bowl_name}**")
-            st.dataframe(generate_active_bowl_df(inn2_bowl), use_container_width=True)
+            st.dataframe(generate_active_bowl_df(inn2_bowl), use_container_width=True, height=400)
 
     # --- TAB 4: MVP LEADERBOARD ---
     with tab_mvp:
