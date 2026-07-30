@@ -369,6 +369,13 @@ elif st.session_state.step == 'live_match':
         handle_strike_rotation(runs)
         check_over_completion()
         recalculate_metrics()
+        # Sync the deep-copied references back to the master team squads
+        if st.session_state.batting_team == st.session_state.team_1:
+            st.session_state.t1_squad = st.session_state.bat_squad
+            st.session_state.t2_squad = st.session_state.bowl_squad
+        else:
+            st.session_state.t2_squad = st.session_state.bat_squad
+            st.session_state.t1_squad = st.session_state.bowl_squad
         save_match_state()
         st.rerun()
 
