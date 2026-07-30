@@ -2,20 +2,15 @@ import streamlit as st
 import pandas as pd
 import math
 import json
-import os
 import random
 import copy
+import requests
 
 st.set_page_config(page_title="CricScore", layout="centered")
 
-# --- Persistent Storage Directory Setup ---
-SAVE_DIR = "match_backups"
-if not os.path.exists(SAVE_DIR):
-    os.makedirs(SAVE_DIR)
-
-def get_file_path(match_code):
-    """Returns the unique file path for a given match code."""
-    return os.path.join(SAVE_DIR, f"match_{match_code}.json")
+# --- Cloud Database Setup (kvdb.io) ---
+# This bucket groups your app's match data. You can change it to any unique name.
+DB_BUCKET = "cricscore_pro_2026_live" 
 
 CORE_KEYS = [
     'step', 't1_squad', 't2_squad', 'match_log', 'commentary', 
@@ -28,7 +23,7 @@ CORE_KEYS = [
 ]
 
 def save_match_state():
-    """Serializes core session state keys into a match-specific JSON file."""
+    """Pushes core session state keys directly to the free cloud database."""
     match_code = st.session_state.get('match_code')
     if not match_code:
         return
@@ -38,28 +33,33 @@ def save_match_state():
         if key in st.session_state:
             state_data[key] = st.session_state[key]
             
-    with open(get_file_path(match_code), "w") as f:
-        json.dump(state_data, f, indent=4)
+    try:
+        url = f"https://kvdb.io/{DB_BUCKET}/{match_code}"
+        requests.post(url, json=state_data, timeout=5)
+    except Exception:
+        pass # Fails silently on network dropouts to prevent app crash
 
 def load_match_state(match_code):
-    """Loads a specific match backup file into the session state."""
-    target_path = get_file_path(match_code)
-    if os.path.exists(target_path):
-        try:
-            with open(target_path, "r") as f:
-                state_data = json.load(f)
+    """Fetches a specific match backup from the cloud database into session state."""
+    try:
+        url = f"https://kvdb.io/{DB_BUCKET}/{match_code}"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            state_data = response.json()
             for key, value in state_data.items():
                 st.session_state[key] = value
             return True
-        except Exception:
-            return False
+    except Exception:
+        return False
     return False
 
 def clear_backup(match_code):
-    """Deletes the specific match backup file upon completion or reset."""
-    target_path = get_file_path(match_code)
-    if os.path.exists(target_path):
-        os.remove(target_path)
+    """Deletes the specific match key from the cloud database upon completion."""
+    try:
+        url = f"https://kvdb.io/{DB_BUCKET}/{match_code}"
+        requests.delete(url, timeout=5)
+    except Exception:
+        pass
 
 # --- Undo Engine Functionality ---
 def take_snapshot():
@@ -179,7 +179,7 @@ def init_player():
 def format_overs(balls):
     return f"{balls // 6}.{balls % 6}"
 
-# --- 0. Match Code / Recovery Portal ---
+# --- 0. Match Code / Cloud Recovery Portal ---
 if st.session_state.step == 'auth':
     st.header("Match Code Portal")
     col1, col2 = st.columns(2)
@@ -193,13 +193,13 @@ if st.session_state.step == 'auth':
             
     with col2:
         st.subheader("Resume Match")
-        input_code = st.text_input("Enter 6-Digit Match Code:", max_chars=6, placeholder="e.g., 548291")
+        input_code = st.text_input("Enter 6-Digit Match Code:", max_chars=6, placeholder="e.g., 548291").strip()
         if st.button("Load Saved Match", use_container_width=True):
-            if input_code.strip() and load_match_state(input_code.strip()):
-                st.toast(f"🔄 Recovered Match #{input_code}!", icon="ℹ️")
+            if input_code and load_match_state(input_code):
+                st.toast(f"🔄 Recovered Match #{input_code} from Cloud Storage!", icon="ℹ️")
                 st.rerun()
             else:
-                st.error("Invalid Match Code or no backup found for this code.")
+                st.error("Invalid Match Code or no backup found on the cloud database.")
 
 # --- 1. Match Setup ---
 elif st.session_state.step == 'setup':
@@ -349,7 +349,7 @@ elif st.session_state.step == 'live_match':
             st.session_state.striker, st.session_state.non_striker = st.session_state.non_striker, st.session_state.striker
 
     def score_normal_delivery(runs):
-        take_snapshot()  # Save history point
+        take_snapshot()
         st.session_state.bat_squad[st.session_state.striker]["runs"] += runs
         st.session_state.bat_squad[st.session_state.striker]["balls_faced"] += 1
         if runs == 4: st.session_state.bat_squad[st.session_state.striker]["fours"] += 1
@@ -374,7 +374,6 @@ elif st.session_state.step == 'live_match':
 
     # --- TAB 1: SCORING CONTROLS ---
     with tab_scoring:
-        # Global Undo Button placed directly at the top of controls
         if len(st.session_state.history) > 0:
             if st.button("↩️ Undo Last Action", type="secondary", use_container_width=True):
                 undo_last_action()
@@ -588,15 +587,13 @@ elif st.session_state.step == 'live_match':
                 elif entry["type"] == "over_break":
                     st.markdown(f'<div class="commentary-over-break">{entry["text"]}</div>', unsafe_allow_html=True)
 
-    # --- TAB 3: MATCH SCORECARDS ---
+    # --- TAB 3: MATCH SCORECARDS (Always shows complete squad) ---
     with tab_scorecards:
         def generate_active_bowl_df(squad_dict):
             df = pd.DataFrame.from_dict(squad_dict, orient='index').copy()
             if not df.empty:
                 df['Overs'] = df['balls_bowled'].apply(format_overs)
-                active_df = df[(df['balls_bowled'] > 0) | (df['wides'] > 0) | (df['no_balls'] > 0)]
-                if not active_df.empty:
-                    return active_df[["Overs", "wides", "no_balls", "runs_given", "wickets", "economy"]]
+                return df[["Overs", "wides", "no_balls", "runs_given", "wickets", "economy"]]
             return pd.DataFrame(columns=["Overs", "wides", "no_balls", "runs_given", "wickets", "economy"])
 
         if st.session_state.innings_1_batting == st.session_state.team_1:
